@@ -1,4 +1,4 @@
-# Tasks: Overtype (Reword)
+# Tasks: Overtype (Overtype)
 
 **Input**: Design documents from `/specs/001-overtype/`
 
@@ -16,9 +16,9 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Initialize SPM project with executable target `Reword` and test target in `Package.swift`
-- [ ] T002 Create `scripts/build-app.sh` for app bundle generation and ad-hoc signing
-- [ ] T003 [P] Create `Sources/Reword/Resources/Info.plist` setting `LSUIElement` to true
+- [x] T001 Initialize SPM project with executable target `Overtype` and test target in `Package.swift`
+- [x] T002 Create `scripts/build-app.sh` for app bundle generation and ad-hoc signing
+- [x] T003 [P] Create `Sources/Overtype/Resources/Info.plist` setting `LSUIElement` to true
 
 ---
 
@@ -28,19 +28,19 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Create data models in `Sources/Reword/Config/AppConfig.swift`
-- [ ] T005 Create `Sources/Reword/Config/DefaultConfig.swift` with initial JSON layout
-- [ ] T006 Implement file watching configuration loader in `Sources/Reword/Config/ConfigStore.swift`
-- [ ] T007 [P] Implement `Sources/Reword/Security/KeychainStore.swift` for API keys
-- [ ] T008 [P] Implement `Sources/Reword/Support/Logger.swift`
-- [ ] T009 Implement Accessibility helpers in `Sources/Reword/Support/AXHelpers.swift`
-- [ ] T010 Implement `Sources/Reword/Core/SelectionReader.swift` (AXUIElement logic)
-- [ ] T011 Implement `Sources/Reword/Core/TextWriter.swift` (CGEvent typing logic)
-- [ ] T012 Implement `Sources/Reword/Core/ResponseSanitizer.swift` (formatting cleanup)
-- [ ] T013 Implement `Sources/Reword/Core/HotkeyManager.swift` using `KeyboardShortcuts`
-- [ ] T014 [P] Create `Sources/Reword/UI/FeedbackPresenter.swift` and `Sources/Reword/UI/HUDPanel.swift`
-- [ ] T015 Create `Sources/Reword/UI/PermissionWindow.swift` for Accessibility grants
-- [ ] T016 Create app entry in `Sources/Reword/RewordApp.swift` and `Sources/Reword/AppDelegate.swift`
+- [x] T004 [P] Create data models in `Sources/Overtype/Config/AppConfig.swift`
+- [x] T005 Create `Sources/Overtype/Config/DefaultConfig.swift` with initial JSON layout
+- [x] T006 Implement file watching configuration loader in `Sources/Overtype/Config/ConfigStore.swift`
+- [x] T007 [P] Implement `Sources/Overtype/Security/KeychainStore.swift` for API keys
+- [x] T008 [P] Implement `Sources/Overtype/Support/Logger.swift`
+- [x] T009 Implement Accessibility helpers in `Sources/Overtype/Support/AXHelpers.swift`
+- [x] T010 Implement `Sources/Overtype/Core/SelectionReader.swift` (AXUIElement logic)
+- [x] T011 Implement `Sources/Overtype/Core/TextWriter.swift` (CGEvent typing logic)
+- [x] T012 Implement `Sources/Overtype/Core/ResponseSanitizer.swift` (formatting cleanup)
+- [x] T013 Implement `Sources/Overtype/Core/HotkeyManager.swift` using `KeyboardShortcuts`
+- [x] T014 [P] Create `Sources/Overtype/UI/FeedbackPresenter.swift` and `Sources/Overtype/UI/HUDPanel.swift`
+- [x] T015 Create `Sources/Overtype/UI/PermissionWindow.swift` for Accessibility grants
+- [x] T016 Create app entry in `Sources/Overtype/OvertypeApp.swift` and `Sources/Overtype/AppDelegate.swift`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -54,18 +54,18 @@
 
 ### Tests for User Story 1
 
-- [ ] T017 [P] [US1] Create unit tests in `Tests/RewordTests/ResponseSanitizerTests.swift`
-- [ ] T018 [P] [US1] Create unit tests in `Tests/RewordTests/ConfigStoreTests.swift`
-- [ ] T019 [P] [US1] Create unit tests in `Tests/RewordTests/PromptTemplateTests.swift`
+- [x] T017 [P] [US1] Create unit tests in `Tests/OvertypeTests/ResponseSanitizerTests.swift`
+- [x] T018 [P] [US1] Create unit tests in `Tests/OvertypeTests/ConfigStoreTests.swift`
+- [x] T019 [P] [US1] Create unit tests in `Tests/OvertypeTests/PromptTemplateTests.swift`
 
 ### Implementation for User Story 1
 
-- [ ] T020 [P] [US1] Create AIProvider protocols in `Sources/Reword/Providers/AIProvider.swift`
-- [ ] T021 [US1] Implement `Sources/Reword/Providers/OpenAICompatibleProvider.swift`
-- [ ] T022 [US1] Implement `Sources/Reword/Providers/ProviderRegistry.swift`
-- [ ] T023 [US1] Implement `Sources/Reword/Core/ActionEngine.swift` tying reader, provider, and writer
-- [ ] T024 [US1] Connect `ActionEngine` execution to `HotkeyManager` callbacks
-- [ ] T025 [US1] Create `Sources/Reword/UI/Settings/SettingsWindow.swift` and `Sources/Reword/UI/Settings/GeneralTab.swift`
+- [x] T020 [P] [US1] Create AIProvider protocols in `Sources/Overtype/Providers/AIProvider.swift`
+- [x] T021 [US1] Implement `Sources/Overtype/Providers/OpenAICompatibleProvider.swift`
+- [x] T022 [US1] Implement `Sources/Overtype/Providers/ProviderRegistry.swift`
+- [x] T023 [US1] Implement `Sources/Overtype/Core/ActionEngine.swift` tying reader, provider, and writer
+- [x] T024 [US1] Connect `ActionEngine` execution to `HotkeyManager` callbacks
+- [x] T025 [US1] Create `Sources/Overtype/UI/Settings/SettingsWindow.swift` and `Sources/Overtype/UI/Settings/GeneralTab.swift`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -77,12 +77,21 @@
 
 **Independent Test**: Map "Make Formal" to a shortcut, verify Anthropic provider works and tone changes accurately.
 
-### Implementation for User Story 2
-
-- [ ] T026 [P] [US2] Create `Sources/Reword/UI/Settings/ActionsTab.swift` to manage ActionConfig mapping
-- [ ] T027 [US2] Implement `Sources/Reword/Providers/AnthropicProvider.swift`
-- [ ] T028 [US2] Update `Sources/Reword/Providers/ProviderRegistry.swift` to register AnthropicProvider
-- [ ] T029 [US2] Create `Sources/Reword/UI/Settings/ProvidersTab.swift` to manage multiple ProviderConfigs and Keychain
+### Tests for User Story 2 & 3
+ 
+- [-] T026 [US2] Create unit tests for Anthropic payload formatting
+- [-] T030 [US3] Create unit tests for Ollama payload formatting
+ 
+### Implementation for User Story 2 (Anthropic)
+ 
+- [-] T027 [US2] Implement `Sources/Overtype/Providers/AnthropicProvider.swift`
+- [-] T028 [US2] Update `ProviderRegistry.swift` to initialize `AnthropicProvider`
+- [-] T029 [US2] Update Settings UI to support Anthropic API Key input
+ 
+### Implementation for User Story 3 (Ollama)
+ 
+- [-] T031 [US3] Implement `Sources/Overtype/Providers/OllamaProvider.swift`
+- [-] T032 [US3] Update `ProviderRegistry.swift` to initialize `OllamaProvider`Configs and Keychain
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -96,9 +105,9 @@
 
 ### Implementation for User Story 3
 
-- [ ] T030 [P] [US3] Implement `Sources/Reword/Providers/OllamaProvider.swift`
-- [ ] T031 [US3] Update `Sources/Reword/Providers/ProviderRegistry.swift` to register OllamaProvider
-- [ ] T032 [US3] Create `Sources/Reword/UI/Settings/DiagnosticsTab.swift` to audit requests and inspect AX elements
+- [-] T030 [P] [US3] Implement `Sources/Overtype/Providers/OllamaProvider.swift`
+- [-] T031 [US3] Update `Sources/Overtype/Providers/ProviderRegistry.swift` to register OllamaProvider
+- [-] T032 [US3] Create `Sources/Overtype/UI/Settings/DiagnosticsTab.swift` to audit requests and inspect AX elements
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -108,9 +117,9 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T033 [P] Documentation updates in `README.md`
-- [ ] T034 [P] Documentation updates in `docs/privacy.md` and `docs/compatibility.md`
-- [ ] T035 Verify compliance with all constraints (run quickstart.md validation)
+- [x] T033 [P] Documentation updates in `README.md`
+- [x] T034 [P] Documentation updates in `docs/privacy.md` and `docs/compatibility.md`
+- [x] T035 Verify compliance with all constraints (run quickstart.md validation)
 
 ---
 

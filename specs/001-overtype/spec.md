@@ -1,4 +1,4 @@
-# Feature Specification: Overtype (Reword)
+# Feature Specification: Overtype (Overtype)
 
 **Feature Branch**: `[###-feature-name]`
 

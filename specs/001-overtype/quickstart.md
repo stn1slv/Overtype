@@ -1,6 +1,6 @@
 # Quickstart & Validation Guide
 
-This guide outlines how to manually validate that Overtype (Reword) functions according to the `BUILD_SPEC.md` and Constitution.
+This guide outlines how to manually validate that Overtype (Overtype) functions according to the `BUILD_SPEC.md` and Constitution.
 
 ## Prerequisites
 - macOS 13 Ventura or newer
@@ -12,7 +12,7 @@ This guide outlines how to manually validate that Overtype (Reword) functions ac
 2. Build the application target.
 3. Because the application requires Accessibility permissions, it must be run as a bundled `.app`.
 4. Run the `./scripts/build-app.sh` script to package and ad-hoc sign the application.
-5. Launch the generated `Reword.app`.
+5. Launch the generated `Overtype.app`.
 
 ## Validation Scenarios
 

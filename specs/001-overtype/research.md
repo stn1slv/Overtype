@@ -1,4 +1,4 @@
-# Research: Overtype (Reword)
+# Research: Overtype (Overtype)
 
 ## 1. Reading Text via Accessibility API
 

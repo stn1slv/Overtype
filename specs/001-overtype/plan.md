@@ -1,4 +1,4 @@
-# Implementation Plan: Overtype (Reword)
+# Implementation Plan: Overtype (Overtype)
 
 **Branch**: `001-overtype` | **Date**: 2026-07-31 | **Spec**: [spec.md](file:///Users/Stanislav_Deviatov/src/github/overtype/specs/001-overtype/spec.md)
 
@@ -55,11 +55,11 @@ specs/001-overtype/
 ### Source Code (repository root)
 
 ```text
-Reword/
-├── Package.swift (or Reword.xcodeproj)
+Overtype/
+├── Package.swift (or Overtype.xcodeproj)
 ├── README.md
-├── Sources/Reword/
-│   ├── RewordApp.swift
+├── Sources/Overtype/
+│   ├── OvertypeApp.swift
 │   ├── AppDelegate.swift
 │   ├── Core/
 │   ├── Providers/
@@ -68,7 +68,7 @@ Reword/
 │   ├── UI/
 │   ├── Support/
 │   └── Resources/
-├── Tests/RewordTests/
+├── Tests/OvertypeTests/
 └── scripts/
     └── build-app.sh
 ```

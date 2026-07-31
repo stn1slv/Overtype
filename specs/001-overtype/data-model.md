@@ -1,8 +1,8 @@
-# Data Model: Overtype (Reword)
+# Data Model: Overtype (Overtype)
 
 ## Application Configuration Models
 
-These models are serialized as JSON in `~/Library/Application Support/Reword/config.json`.
+These models are serialized as JSON in `~/Library/Application Support/Overtype/config.json`.
 
 ### `AppConfig`
 Root configuration structure.
