@@ -37,12 +37,27 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
       "enabled": true,
       "shortcut": { "keyCode": 5, "modifiers": 1835008, "displayString": "⌃⌥⌘G" },
       "providerID": "openai",
+      "model": "gpt-4o-mini",
       "systemPrompt": "You are a proofreader. Fix grammar, spelling, and punctuation...",
       "userPromptTemplate": "{{text}}"
+    }
+  ],
+  "providers": [
+    {
+      "id": "openai",
+      "type": "openai",
+      "baseURL": "https://api.openai.com/v1",
+      "defaultModel": "gpt-4o"
     }
   ]
 }
 ```
+
+### Specifying the AI Model
+
+Overtype resolves the AI model to use in the following order:
+1. **Action-level model**: If an action specifies a `"model"` key (e.g. `"model": "gpt-4o-mini"`), it is used. This allows you to use faster/cheaper models for simple tasks and heavier models for complex rewrites.
+2. **Provider-level default**: If the action omits the model, Overtype falls back to the `"defaultModel"` specified in the provider's configuration.
 
 ## Security & Privacy Constraints
 
