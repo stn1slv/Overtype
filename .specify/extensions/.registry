@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "extensions": {
+    "archive": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:ffa3831c0dd8aceeadad88efe4411676142d654dfbc1987e6e030ba6cdceb83e",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.archive.run"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-07-31T15:05:54.787865+00:00"
+    },
+    "reconcile": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:e1674fb7e16923c0e9e32eee78ef5a04626d05f092c56cc7c59e26fab07c210b",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "claude": [
+          "speckit.reconcile.run"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-07-31T15:06:11.079832+00:00"
+    }
+  }
+}
