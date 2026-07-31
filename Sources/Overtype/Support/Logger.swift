@@ -8,7 +8,7 @@ public enum LogLevel {
 public class Logger {
     public static let shared = Logger()
     
-    private let osLog = OSLog(subsystem: "com.example.Overtype", category: "App")
+    private let osLog = OSLog(subsystem: "com.github.stn1slv.Overtype", category: "App")
     
     // In production, debug mode should be false to prevent logging sensitive user data.
     public var isDebugEnabled: Bool = false
