@@ -28,14 +28,27 @@ public class AXHelpers {
         
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         
+        // 1. Try System-Wide Focused Element
+        let systemWideElement = AXUIElementCreateSystemWide()
         var focusedElementValue: CFTypeRef?
-        var error = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+        var error = AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+        
+        if error == .success, let element = focusedElementValue {
+            var pid: pid_t = 0
+            AXUIElementGetPid(element as! AXUIElement, &pid)
+            if pid == app.processIdentifier {
+                return element as! AXUIElement
+            }
+        }
+        
+        // 2. Try App-Level Focused Element
+        error = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
         
         if error == .success, let element = focusedElementValue {
             return element as! AXUIElement
         }
         
-        // Fallback 1: Try the focused window
+        // 3. Try the focused window
         var focusedWindowValue: CFTypeRef?
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue) == .success,
            let focusedWindow = focusedWindowValue {
@@ -45,7 +58,7 @@ public class AXHelpers {
             }
         }
         
-        // Fallback 2: Try the main window
+        // 4. Try the main window
         var mainWindowValue: CFTypeRef?
         if AXUIElementCopyAttributeValue(appElement, kAXMainWindowAttribute as CFString, &mainWindowValue) == .success,
            let mainWindow = mainWindowValue {
@@ -55,7 +68,42 @@ public class AXHelpers {
             }
         }
         
+        // 5. Ultimate Fallback: DFS for an element with selected text inside the focused/main window
+        if let window = focusedWindowValue {
+            if let found = findActiveTextElement(in: window as! AXUIElement) {
+                return found
+            }
+        }
+        
+        if let window = mainWindowValue {
+            if let found = findActiveTextElement(in: window as! AXUIElement) {
+                return found
+            }
+        }
+        
         throw AXError.noFocusedElement
+    }
+    
+    private static func findActiveTextElement(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
+        if depth > 15 { return nil } // Prevent infinite/excessive recursion
+        
+        var selectedTextValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedTextValue) == .success,
+           let text = selectedTextValue as? String, !text.isEmpty {
+            return element
+        }
+        
+        var childrenValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenValue) == .success,
+           let children = childrenValue as? [AXUIElement] {
+            for child in children {
+                if let found = findActiveTextElement(in: child, depth: depth + 1) {
+                    return found
+                }
+            }
+        }
+        
+        return nil
     }
     
     public static func getSelectedText(from element: AXUIElement) throws -> String {
