@@ -15,6 +15,7 @@ struct OvertypeApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     
     var statusItem: NSStatusItem!
+    var settingsWindow: NSWindow?
     let engine = ActionEngine()
     let hotkeyManager = HotkeyManager()
     
@@ -52,7 +53,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        if settingsWindow == nil {
+            let hostingController = NSHostingController(rootView: SettingsWindow())
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 550, height: 450),
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                  backing: .buffered,
+                                  defer: false)
+            window.title = "Overtype Settings"
+            window.contentViewController = hostingController
+            window.center()
+            window.isReleasedWhenClosed = false
+            self.settingsWindow = window
+        }
+        
+        settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 }
