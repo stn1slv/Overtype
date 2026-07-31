@@ -68,15 +68,19 @@ public class AXHelpers {
             }
         }
         
-        // 5. Ultimate Fallback: DFS for an element with selected text inside the focused/main window
+        // 5. Ultimate Fallback: DFS for an element with selected text inside the focused/main window.
+        // QUIRK WORKAROUND: Microsoft Outlook (New Outlook) and other Electron/React Native-based apps
+        // fail to propagate kAXFocusedUIElementAttribute to the app or window element.
+        // We recursively crawl the accessibility tree to find the element that has active selection.
+        var visitedCount = 0
         if let window = focusedWindowValue {
-            if let found = findActiveTextElement(in: window as! AXUIElement) {
+            if let found = findActiveTextElement(in: window as! AXUIElement, visitedCount: &visitedCount) {
                 return found
             }
         }
         
         if let window = mainWindowValue {
-            if let found = findActiveTextElement(in: window as! AXUIElement) {
+            if let found = findActiveTextElement(in: window as! AXUIElement, visitedCount: &visitedCount) {
                 return found
             }
         }
@@ -84,8 +88,10 @@ public class AXHelpers {
         throw AXError.noFocusedElement
     }
     
-    private static func findActiveTextElement(in element: AXUIElement, depth: Int = 0) -> AXUIElement? {
-        if depth > 15 { return nil } // Prevent infinite/excessive recursion
+    private static func findActiveTextElement(in element: AXUIElement, depth: Int = 0, visitedCount: inout Int) -> AXUIElement? {
+        if depth > 10 { return nil } // Prevent excessive recursion depth
+        visitedCount += 1
+        if visitedCount > 200 { return nil } // Protect against UI hangs in extremely complex AX trees
         
         var selectedTextValue: CFTypeRef?
         if AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedTextValue) == .success,
@@ -97,7 +103,7 @@ public class AXHelpers {
         if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenValue) == .success,
            let children = childrenValue as? [AXUIElement] {
             for child in children {
-                if let found = findActiveTextElement(in: child, depth: depth + 1) {
+                if let found = findActiveTextElement(in: child, depth: depth + 1, visitedCount: &visitedCount) {
                     return found
                 }
             }

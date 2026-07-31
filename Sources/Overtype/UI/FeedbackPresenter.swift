@@ -11,28 +11,38 @@ public class FeedbackPresenter: FeedbackPresenting {
     
     private var hudWindowController: NSWindowController?
     private var hudView: HUDAppKitView?
+    private var hideWorkItem: DispatchWorkItem?
     
     private init() {}
     
     public func showLoading(message: String) {
         DispatchQueue.main.async {
+            self.hideWorkItem?.cancel()
+            self.hideWorkItem = nil
             self.display(message: message, isError: false)
         }
     }
     
     public func showError(message: String) {
         DispatchQueue.main.async {
+            self.hideWorkItem?.cancel()
+            
             self.display(message: message, isError: true)
             
-            // Auto-hide error after 3 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                self.hide()
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.hide()
             }
+            self.hideWorkItem = workItem
+            
+            // Auto-hide error after 3 seconds safely using a cancellable work item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: workItem)
         }
     }
     
     public func hide() {
         DispatchQueue.main.async {
+            self.hideWorkItem?.cancel()
+            self.hideWorkItem = nil
             self.hudWindowController?.close()
             self.hudWindowController = nil
             self.hudView = nil

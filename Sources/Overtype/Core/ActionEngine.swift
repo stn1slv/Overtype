@@ -67,6 +67,12 @@ public class ActionEngine {
                     throw ProviderError.cancelled // Or a specific context changed error
                 }
                 
+                // Ensure target context hasn't changed (focused element check - Principle II)
+                let currentFocused = try? AXHelpers.getFocusedElement()
+                guard let currentFocused = currentFocused, CFEqual(currentFocused, selection.element) else {
+                    throw ProviderError.cancelled
+                }
+                
                 try textWriter.replaceSelection(
                     selection,
                     with: cleanedResponse,
