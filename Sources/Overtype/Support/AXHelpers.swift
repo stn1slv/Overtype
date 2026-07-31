@@ -25,7 +25,7 @@ public class AXHelpers {
             throw AXError.noFocusedElement
         }
         
-        return element as! AXUIElement
+        return element as! AXUIElement // Safe because kAXFocusedUIElementAttribute always returns an AXUIElement
     }
     
     public static func getSelectedText(from element: AXUIElement) throws -> String {

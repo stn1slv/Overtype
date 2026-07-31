@@ -18,7 +18,9 @@ public class KeychainStore: KeychainStoring {
     public init() {}
     
     public func store(key: String, value: String) throws {
-        let valueData = value.data(using: .utf8)!
+        guard let valueData = value.data(using: .utf8) else {
+            throw KeychainError.unhandledError(status: errSecParam)
+        }
         
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

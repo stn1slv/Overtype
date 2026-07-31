@@ -46,7 +46,7 @@ public class OpenAICompatibleProvider: AIProvider {
             ]
         ]
         
-        urlRequest.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
         
         let (data, response) = try await urlSession.data(for: urlRequest)
         
@@ -55,8 +55,7 @@ public class OpenAICompatibleProvider: AIProvider {
         }
         
         if httpResponse.statusCode != 200 {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Unknown Error"
-            throw ProviderError.apiError(statusCode: httpResponse.statusCode, message: errorMsg)
+            throw ProviderError.apiError(statusCode: httpResponse.statusCode, message: "Server returned error code")
         }
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

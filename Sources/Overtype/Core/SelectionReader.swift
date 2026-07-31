@@ -1,9 +1,10 @@
-import Foundation
+import Cocoa
 import ApplicationServices
 
 public struct Selection {
     public let text: String
     public let element: AXUIElement
+    public let pid: pid_t
 }
 
 public protocol SelectionReading {
@@ -25,6 +26,7 @@ public class SelectionReader: SelectionReading {
         Logger.shared.log("Successfully read selection of \(text.count) characters.", level: .info)
         Logger.shared.sanitizedLog(sensitiveText: text, context: "Selected text", level: .debug)
         
-        return Selection(text: text, element: element)
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        return Selection(text: text, element: element, pid: pid)
     }
 }

@@ -53,7 +53,6 @@ public struct ProviderConfig: Codable, Equatable {
 
 public enum WriteStrategy: String, Codable, Equatable {
     case typing = "typing"
-    case pasteboard = "pasteboard" // explicitly banned by our rules but useful for enum completeness in config, we can reject it
 }
 
 public struct ActionShortcut: Codable, Equatable {

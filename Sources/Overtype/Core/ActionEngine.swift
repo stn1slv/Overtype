@@ -1,4 +1,5 @@
 import Foundation
+import Cocoa
 
 public class ActionEngine {
     
@@ -60,6 +61,11 @@ public class ActionEngine {
                 let cleanedResponse = sanitizer.sanitize(response: rawResponse, originalText: selection.text)
                 
                 FeedbackPresenter.shared.showLoading(message: "Writing...")
+                
+                let currentPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+                guard currentPID == selection.pid else {
+                    throw ProviderError.cancelled // Or a specific context changed error
+                }
                 
                 try textWriter.replaceSelection(
                     selection,

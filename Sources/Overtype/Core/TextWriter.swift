@@ -20,10 +20,6 @@ public class TextWriter: TextWriting {
         switch strategy {
         case .typing:
             try writeViaCGEvent(text: text, settings: settings)
-        case .pasteboard:
-            // Explicitly banned by constitution, but fallback just throws
-            Logger.shared.log("Pasteboard write strategy is strictly prohibited.", level: .error)
-            throw AXError.cannotWriteSelectedText
         }
     }
     
