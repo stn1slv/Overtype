@@ -16,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     var statusItem: NSStatusItem!
     var settingsWindow: NSWindow?
+    var globalEscapeMonitor: Any?
+    var localEscapeMonitor: Any?
     let engine = ActionEngine()
     let hotkeyManager = HotkeyManager()
     
@@ -40,6 +42,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.registerHotkeys(for: ConfigStore.shared.config.actions) { [weak self] action in
             self?.engine.run(action: action)
         }
+        
+        // Register Escape key to cancel in-flight tasks
+        setupEscapeMonitors()
+    }
+    
+    func setupEscapeMonitors() {
+        let handler: (NSEvent) -> NSEvent? = { [weak self] event in
+            if event.keyCode == 53 { // kVK_Escape
+                self?.engine.cancel()
+            }
+            return event
+        }
+        
+        globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            _ = handler(event)
+        }
+        
+        localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handler)
     }
     
     func constructMenu() {
