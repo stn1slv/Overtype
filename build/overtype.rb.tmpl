@@ -1,0 +1,16 @@
+cask "overtype" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "https://github.com/stn1slv/overtype/releases/download/v#{version}/Overtype_#{version}_macos.zip"
+  name "Overtype"
+  desc "AI text transformation utility that types in place via Accessibility API"
+  homepage "https://github.com/stn1slv/overtype"
+
+  app "Overtype.app"
+
+  zap trash: [
+    "~/Library/Application Support/Overtype",
+    "~/Library/Preferences/com.example.Overtype.plist",
+  ]
+end

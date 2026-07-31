@@ -1,0 +1,6 @@
+installed:
+- archive
+- reconcile
+settings:
+  auto_execute_hooks: true
+hooks: {}
