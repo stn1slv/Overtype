@@ -1,0 +1,22 @@
+{
+  "actions": [
+    {
+      "id": "fix-grammar",
+      "title": "Fix grammar",
+      "enabled": true,
+      "shortcut": { "keyCode": 5, "modifiers": 1835008, "displayString": "⌃⌥⌘G" },
+      "providerID": "openai",
+      "model": "gpt-5.4-nano",
+      "systemPrompt": "You are a proofreader. Fix grammar, spelling, and punctuation...",
+      "userPromptTemplate": "{{text}}"
+    }
+  ],
+  "providers": [
+    {
+      "id": "openai",
+      "type": "openai",
+      "baseURL": "https://api.openai.com/v1",
+      "defaultModel": "gpt-5.4-nano"
+    }
+  ]
+}
