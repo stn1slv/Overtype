@@ -33,6 +33,6 @@ if [ -d "$RESOURCES_DIR" ]; then
 fi
 
 echo "Codesigning (ad-hoc)..."
-codesign --force --deep --sign - "$APP_BUNDLE"
+codesign --force --deep --sign - -i com.example.Overtype "$APP_BUNDLE"
 
 echo "Done! App bundle created at $APP_BUNDLE"
