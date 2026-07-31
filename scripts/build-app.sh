@@ -18,7 +18,10 @@ cp "$BIN_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
 
 echo "Copying Info.plist..."
 if [ -f "Sources/Overtype/Resources/Info.plist" ]; then
-    cp "Sources/Overtype/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+    cp Sources/Overtype/Resources/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+    if [ -f "Sources/Overtype/Resources/AppIcon.icns" ]; then
+        cp Sources/Overtype/Resources/AppIcon.icns "$APP_BUNDLE/Contents/Resources/"
+    fi
 else
     echo "Warning: Info.plist not found in Sources/Overtype/Resources/"
 fi

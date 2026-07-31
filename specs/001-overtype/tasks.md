@@ -144,3 +144,7 @@
 - Foundation components (Models, Stores, UI stubs, Helpers) can be built in parallel.
 - Unit tests can run entirely in parallel with foundational execution.
 - Documentation updates can run in parallel with final UI tweaks.
+
+## Phase 7: Convergence
+
+- [ ] T036 Add global NSEvent monitor for Escape key to cancel in-flight tasks per FR-009 (missing)
