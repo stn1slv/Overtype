@@ -57,6 +57,8 @@ public class FeedbackPresenter: FeedbackPresenting {
             )
             
             let hostingView = NSHostingView(rootView: HUDView(state: hudState))
+            hostingView.sizingOptions = []
+            hostingView.autoresizingMask = [.width, .height]
             panel.contentView = hostingView
             panel.center()
             
