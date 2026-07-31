@@ -102,6 +102,7 @@ struct HUDView: View {
                 .foregroundColor(.white)
         }
         .padding()
+        .frame(width: 300, height: 60)
         .background(Color.black.opacity(0.75))
         .cornerRadius(12)
     }

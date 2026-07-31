@@ -1,12 +1,22 @@
 import Cocoa
 import ApplicationServices
 
-public enum AXError: Error {
+public enum AXError: Error, LocalizedError {
     case cannotCreateSystemWideElement
     case noFocusedApplication
     case noFocusedElement
     case cannotReadSelectedText
     case cannotWriteSelectedText
+    
+    public var errorDescription: String? {
+        switch self {
+        case .cannotCreateSystemWideElement: return "Cannot create system-wide accessibility element."
+        case .noFocusedApplication: return "No focused application found."
+        case .noFocusedElement: return "Cannot find the focused text element in the active application."
+        case .cannotReadSelectedText: return "Cannot read selected text. The application might not support Accessibility API."
+        case .cannotWriteSelectedText: return "Cannot write text. The application might not support Accessibility API."
+        }
+    }
 }
 
 public class AXHelpers {
@@ -19,13 +29,33 @@ public class AXHelpers {
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
         
         var focusedElementValue: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+        var error = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
         
-        guard error == .success, let element = focusedElementValue else {
-            throw AXError.noFocusedElement
+        if error == .success, let element = focusedElementValue {
+            return element as! AXUIElement
         }
         
-        return element as! AXUIElement // Safe because kAXFocusedUIElementAttribute always returns an AXUIElement
+        // Fallback 1: Try the focused window
+        var focusedWindowValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue) == .success,
+           let focusedWindow = focusedWindowValue {
+            error = AXUIElementCopyAttributeValue(focusedWindow as! AXUIElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+            if error == .success, let element = focusedElementValue {
+                return element as! AXUIElement
+            }
+        }
+        
+        // Fallback 2: Try the main window
+        var mainWindowValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(appElement, kAXMainWindowAttribute as CFString, &mainWindowValue) == .success,
+           let mainWindow = mainWindowValue {
+            error = AXUIElementCopyAttributeValue(mainWindow as! AXUIElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+            if error == .success, let element = focusedElementValue {
+                return element as! AXUIElement
+            }
+        }
+        
+        throw AXError.noFocusedElement
     }
     
     public static func getSelectedText(from element: AXUIElement) throws -> String {

@@ -80,6 +80,9 @@ public class ActionEngine {
             } catch is CancellationError {
                 FeedbackPresenter.shared.hide()
                 Logger.shared.log("Action cancelled.", level: .info)
+            } catch ProviderError.cancelled {
+                FeedbackPresenter.shared.hide()
+                Logger.shared.log("Action cancelled due to context switch.", level: .info)
             } catch {
                 FeedbackPresenter.shared.showError(message: error.localizedDescription)
                 Logger.shared.log("Action failed: \(error)", level: .error)
