@@ -7,24 +7,28 @@ public protocol FeedbackPresenting {
     func hide()
 }
 
+public class HUDState: ObservableObject {
+    @Published var message: String = ""
+    @Published var isError: Bool = false
+}
+
 public class FeedbackPresenter: FeedbackPresenting {
     public static let shared = FeedbackPresenter()
     
     private var hudWindowController: NSWindowController?
+    private let hudState = HUDState()
     
     private init() {}
     
     public func showLoading(message: String) {
         DispatchQueue.main.async {
-            let view = HUDView(message: message, isError: false)
-            self.display(view: view)
+            self.display(message: message, isError: false)
         }
     }
     
     public func showError(message: String) {
         DispatchQueue.main.async {
-            let view = HUDView(message: message, isError: true)
-            self.display(view: view)
+            self.display(message: message, isError: true)
             
             // Auto-hide error after 3 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -40,7 +44,10 @@ public class FeedbackPresenter: FeedbackPresenting {
         }
     }
     
-    private func display(view: HUDView) {
+    private func display(message: String, isError: Bool) {
+        hudState.message = message
+        hudState.isError = isError
+        
         if hudWindowController == nil {
             let panel = HUDPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 300, height: 60),
@@ -49,7 +56,7 @@ public class FeedbackPresenter: FeedbackPresenting {
                 defer: false
             )
             
-            let hostingView = NSHostingView(rootView: view)
+            let hostingView = NSHostingView(rootView: HUDView(state: hudState))
             panel.contentView = hostingView
             panel.center()
             
@@ -61,9 +68,6 @@ public class FeedbackPresenter: FeedbackPresenting {
             }
             
             hudWindowController = NSWindowController(window: panel)
-        } else if let panel = hudWindowController?.window as? HUDPanel,
-                  let hostingView = panel.contentView as? NSHostingView<HUDView> {
-            hostingView.rootView = view
         }
         
         hudWindowController?.showWindow(nil)
@@ -82,19 +86,18 @@ public class HUDPanel: NSPanel {
 }
 
 struct HUDView: View {
-    let message: String
-    let isError: Bool
+    @ObservedObject var state: HUDState
     
     var body: some View {
         HStack {
-            if isError {
+            if state.isError {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.yellow)
             } else {
                 ProgressView()
                     .controlSize(.small)
             }
-            Text(message)
+            Text(state.message)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white)
         }
