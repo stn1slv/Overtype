@@ -61,33 +61,44 @@ public class TextWriter: TextWriting {
         // Let the UI catch up
         Thread.sleep(forTimeInterval: 0.05)
         
-        // Type the replacement text by inserting it into the focused element directly
-        // via Accessibility where possible, as CGEvent char-by-char is slow for long text.
-        // Wait, the BUILD_SPEC explicitly says: "Writing text: Use CGEvent(keyboardEventSource:virtualKey:keyDown:)"
-        // But for strings, CGEvent(keyboardEventSource:source, virtualKey:0, keyDown:true) + keyboardSetUnicodeString
+        let chunkSize = settings.typingChunkSize ?? 20
+        let baseDelayUs = settings.typingDelayMicroseconds ?? 2000
+        let delayUs = Int(Double(baseDelayUs) / settings.typingSpeedMultiplier)
+        
+        Logger.shared.log("Effective typing config - deliveryMethod: chunked, chunkSize: \(chunkSize), delayUS: \(delayUs)", level: .info)
         
         let utf16Chars = Array(text.utf16)
+        let totalChars = utf16Chars.count
+        var chunkCount = 0
+        let startTime = Date()
         
-        for char in utf16Chars {
-            var uniChar = char
+        for i in stride(from: 0, to: totalChars, by: chunkSize) {
+            chunkCount += 1
+            let end = min(i + chunkSize, totalChars)
+            let chunkLength = end - i
+            var chunk = Array(utf16Chars[i..<end])
+            
             guard let eventDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
                   let eventUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
                 continue
             }
             
-            eventDown.keyboardSetUnicodeString(stringLength: 1, unicodeString: &uniChar)
-            eventUp.keyboardSetUnicodeString(stringLength: 1, unicodeString: &uniChar)
+            eventDown.keyboardSetUnicodeString(stringLength: chunkLength, unicodeString: &chunk)
+            eventUp.keyboardSetUnicodeString(stringLength: chunkLength, unicodeString: &chunk)
             
             eventDown.post(tap: .cghidEventTap)
             eventUp.post(tap: .cghidEventTap)
             
-            let delay = Double(settings.typingDelayMs) / 1000.0 / settings.typingSpeedMultiplier
-            if delay > 0 {
-                Thread.sleep(forTimeInterval: delay)
+            if delayUs > 0 {
+                usleep(useconds_t(delayUs))
             }
         }
         
-        Logger.shared.log("Successfully wrote \(text.count) characters.", level: .info)
+        let elapsed = Date().timeIntervalSince(startTime)
+        let elapsedMs = elapsed * 1000.0
+        let avgPerChunk = chunkCount > 0 ? elapsedMs / Double(chunkCount) : 0
+        
+        Logger.shared.log(String(format: "Typing performance - chars: %d, chunks: %d, elapsed: %.1fms, avg/chunk: %.2fms", totalChars, chunkCount, elapsedMs, avgPerChunk), level: .info)
     }
     
     private func postKey(keyCode: CGKeyCode, source: CGEventSource) {

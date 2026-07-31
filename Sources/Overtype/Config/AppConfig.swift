@@ -15,14 +15,18 @@ public struct AppConfig: Codable, Equatable {
 }
 
 public struct GeneralConfig: Codable, Equatable {
-    public var typingDelayMs: Int
+    public var typingDelayMs: Int // Legacy, keep for backward compatibility
     public var typingSpeedMultiplier: Double
     public var showHUD: Bool
+    public var typingChunkSize: Int?
+    public var typingDelayMicroseconds: Int?
     
-    public init(typingDelayMs: Int = 150, typingSpeedMultiplier: Double = 1.0, showHUD: Bool = true) {
+    public init(typingDelayMs: Int = 150, typingSpeedMultiplier: Double = 1.0, showHUD: Bool = true, typingChunkSize: Int? = 20, typingDelayMicroseconds: Int? = 2000) {
         self.typingDelayMs = typingDelayMs
         self.typingSpeedMultiplier = typingSpeedMultiplier
         self.showHUD = showHUD
+        self.typingChunkSize = typingChunkSize
+        self.typingDelayMicroseconds = typingDelayMicroseconds
     }
 }
 
