@@ -22,7 +22,7 @@ It securely modifies text via macOS Accessibility APIs, completely bypassing the
 3. **Accessibility Permissions**:
    On first launch, macOS will prompt you to grant Accessibility permissions in System Settings > Privacy & Security > Accessibility. This is required for Overtype to read the focused text field.
 4. **API Key Setup**:
-   Click the **Overtype** menu bar icon (the quotation mark), open **Settings**, and paste your OpenAI API key. This key is stored securely in your macOS Keychain and is *never* written to plaintext config files.
+   Click the **Overtype** menu bar icon (the quotation mark), open **Settings**, and paste your OpenAI API key. This key is stored securely in your macOS Keychain and is *never* written to plaintext config files. For detailed step-by-step instructions, see our [OpenAI Setup Guide](docs/openai-setup.md).
 
 ## Configuration file
 
