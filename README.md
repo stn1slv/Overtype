@@ -21,8 +21,8 @@ It securely modifies text via macOS Accessibility APIs, completely bypassing the
    Open the generated bundle `Overtype.app` inside the `.build/release/` directory.
 3. **Accessibility Permissions**:
    On first launch, macOS will prompt you to grant Accessibility permissions in System Settings > Privacy & Security > Accessibility. This is required for Overtype to read the focused text field.
-4. **Configuration**:
-   Click the `Overtype` menu bar icon, open **Settings**, and paste your OpenAI API key.
+4. **API Key Setup**:
+   Click the **Overtype** menu bar icon (the quotation mark), open **Settings**, and paste your OpenAI API key. This key is stored securely in your macOS Keychain and is *never* written to plaintext config files.
 
 ## Configuration file
 
@@ -30,6 +30,21 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
 
 ```json
 {
+  "global": {
+    "typingDelayMs": 150,
+    "typingSpeedMultiplier": 1.0,
+    "showHUD": true
+  },
+  "providers": [
+    {
+      "id": "openai",
+      "kind": "openai",
+      "baseURL": "https://api.openai.com/v1",
+      "defaultModel": "gpt-4o-mini",
+      "timeoutSeconds": 30.0,
+      "keychainKey": "overtype-openai-key"
+    }
+  ],
   "actions": [
     {
       "id": "fix-grammar",
@@ -37,21 +52,24 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
       "enabled": true,
       "shortcut": { "keyCode": 5, "modifiers": 1835008, "displayString": "⌃⌥⌘G" },
       "providerID": "openai",
-      "model": "gpt-4o-mini",
+      "model": null,
       "systemPrompt": "You are a proofreader. Fix grammar, spelling, and punctuation...",
-      "userPromptTemplate": "{{text}}"
-    }
-  ],
-  "providers": [
-    {
-      "id": "openai",
-      "type": "openai",
-      "baseURL": "https://api.openai.com/v1",
-      "defaultModel": "gpt-4o"
+      "userPromptTemplate": "{{text}}",
+      "temperature": 0.0,
+      "maxInputCharacters": 5000,
+      "allowNewlines": false,
+      "writeStrategy": "typing"
     }
   ]
 }
 ```
+
+### Configuring the API Key
+
+Because Overtype values privacy and security, API keys are never stored in your `config.json` file. Instead:
+1. The provider config defines a `"keychainKey"` (e.g. `"overtype-openai-key"`).
+2. When you paste your API key into the Overtype **Settings** window, it saves it securely into the **macOS Keychain** under that exact name.
+3. At runtime, the Action Engine dynamically retrieves the key from the Keychain.
 
 ### Specifying the AI Model
 
