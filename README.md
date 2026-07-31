@@ -11,17 +11,30 @@ It securely modifies text via macOS Accessibility APIs, completely bypassing the
 - **Global Hotkeys**: Highlight text in any application (like MS Teams or Apple Notes), hit a shortcut (e.g. ⌃⌥⌘G), and watch the text get magically replaced inline.
 - **Privacy First**: Sensitive text is never written to disk. Only standard, sanitized application logs are recorded.
 
-## Setup
+## Installation
+
+### Via Homebrew (Recommended)
+
+You can easily install Overtype using our custom Homebrew tap:
+
+```bash
+brew install stn1slv/tap/overtype
+```
+
+### Manual Installation
 
 1. **Build the Application**:
    ```bash
    ./scripts/build-app.sh
    ```
 2. **Launch**:
-   Open the generated bundle `Overtype.app` inside the `.build/release/` directory.
-3. **Accessibility Permissions**:
+   Open the generated bundle `Overtype.app` inside the root directory or move it to `/Applications`.
+
+## Setup
+
+1. **Accessibility Permissions**:
    On first launch, macOS will prompt you to grant Accessibility permissions in System Settings > Privacy & Security > Accessibility. This is required for Overtype to read the focused text field.
-4. **API Key Setup**:
+2. **API Key Setup**:
    Click the **Overtype** menu bar icon (the quotation mark), open **Settings**, and paste your OpenAI API key. This key is stored securely in your macOS Keychain and is *never* written to plaintext config files. For detailed step-by-step instructions, see our [OpenAI Setup Guide](docs/openai-setup.md).
 
 ## Configuration file
