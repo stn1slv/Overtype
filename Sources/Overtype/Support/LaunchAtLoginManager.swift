@@ -28,11 +28,15 @@ final class LaunchAtLoginManager: ObservableObject {
     }
     
     init() {
-        self.isEnabled = SMAppService.mainApp.status == .enabled
+        let status = SMAppService.mainApp.status
+        self.isEnabled = status == .enabled || status == .requiresApproval
+        self.error = status == .requiresApproval ? .requiresApproval : nil
     }
     
     func refresh() {
-        self.isEnabled = SMAppService.mainApp.status == .enabled
+        let status = SMAppService.mainApp.status
+        self.isEnabled = status == .enabled || status == .requiresApproval
+        self.error = status == .requiresApproval ? .requiresApproval : nil
     }
     
     func setLaunchAtLogin(enabled: Bool) {
@@ -46,14 +50,15 @@ final class LaunchAtLoginManager: ObservableObject {
             let currentStatus = SMAppService.mainApp.status
             if enabled && currentStatus == .requiresApproval {
                 self.error = .requiresApproval
-                self.isEnabled = false
+                self.isEnabled = true
             } else {
                 self.error = nil
-                self.isEnabled = currentStatus == .enabled
+                self.isEnabled = currentStatus == .enabled || currentStatus == .requiresApproval
             }
         } catch {
             self.error = enabled ? .registrationFailed(error) : .unregistrationFailed(error)
-            self.isEnabled = SMAppService.mainApp.status == .enabled
+            let status = SMAppService.mainApp.status
+            self.isEnabled = status == .enabled || status == .requiresApproval
         }
     }
 }

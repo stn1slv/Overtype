@@ -9,11 +9,12 @@ public struct GeneralTab: View {
     
     public var body: some View {
         Form {
-            Section(header: Text("General Settings")) {
+            Section(header: Text("Startup")) {
                 Toggle("Launch at login", isOn: Binding(
                     get: { launchManager.isEnabled },
                     set: { launchManager.setLaunchAtLogin(enabled: $0) }
                 ))
+                .toggleStyle(.checkbox)
                 
                 if let errorMessage = launchManager.errorMessage {
                     Text(errorMessage)
@@ -54,6 +55,9 @@ public struct GeneralTab: View {
         .padding()
         .onAppear {
             loadKey()
+            launchManager.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             launchManager.refresh()
         }
     }

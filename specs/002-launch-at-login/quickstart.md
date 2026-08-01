@@ -18,11 +18,14 @@ This guide describes how to validate the Launch at Login feature manually, fulfi
 
 ## Scenario 2: Enable Launch at Login
 
-1. Click the Overtype menu bar icon.
-2. Select **Settings**.
-3. Locate the **Launch at Login** checkbox. It should initially reflect your system's current state (likely unchecked).
-4. Check the box.
-5. Open macOS **System Settings** -> **General** -> **Login Items**.
+1. Build the app using `make build-app`.
+2. **IMPORTANT**: Copy the generated `Overtype.app` bundle into your `/Applications` directory. `SMAppService` relies on accurate ad-hoc code signing and bundle location, and running it directly from the dev repository can cause it to silently fail or throw permission errors.
+3. Launch Overtype from `/Applications`.
+4. Click the Overtype menu bar icon.
+5. Select **Settings**.
+6. Locate the **Launch at login** checkbox. It should initially reflect your system's current state (likely unchecked).
+7. Check the box.
+8. Open macOS **System Settings** -> **General** -> **Login Items**.
 6. **Expected Outcome**: "Overtype" is listed under "Open at Login".
 7. (Optional) Log out and log back into your Mac account.
 8. **Expected Outcome**: Overtype launches automatically and appears in the menu bar.

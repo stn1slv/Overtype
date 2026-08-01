@@ -138,3 +138,7 @@ Task: "Add 'Launch at Login' Checkbox to Sources/Overtype/UI/SettingsView.swift"
 - Each user story should be independently completable and testable
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
+
+## Phase 6: Convergence
+
+- [x] T007 Apply `.toggleStyle(.checkbox)` to the Launch at login Toggle in `Sources/Overtype/UI/Settings/GeneralTab.swift` to satisfy visual requirements per FR-001 (partial)
