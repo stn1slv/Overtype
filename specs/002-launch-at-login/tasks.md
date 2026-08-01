@@ -8,7 +8,7 @@ description: "Task list for Launch at Login feature implementation"
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, quickstart.md
 
-**Tests**: Because this feature interacts with a system boundary (`SMAppService`), automated unit testing is explicitly forbidden by Constitution Principle VIII (Verification Discipline). All testing must be manual according to the quickstart guide.
+**Tests**: Because this feature interacts with a system boundary (`SMAppService`), automated unit testing with mocks asserting on the mock is explicitly forbidden by Constitution Principle VIII (Verification Discipline). All boundary testing must be manual according to the quickstart guide.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -45,7 +45,7 @@ description: "Task list for Launch at Login feature implementation"
 ### Implementation for User Story 1
 
 - [x] T003 [US1] Create `LaunchAtLoginManager` in `Sources/Overtype/Support/LaunchAtLoginManager.swift` wrapping `SMAppService.mainApp.status` with `register()` logic and error handling.
-- [x] T004 [US1] Add "Launch at Login" Checkbox to `Sources/Overtype/UI/SettingsView.swift` bound to `LaunchAtLoginManager.isEnabled`.
+- [x] T004 [US1] Add "Launch at Login" Checkbox to `Sources/Overtype/UI/Settings/GeneralTab.swift` bound to `LaunchAtLoginManager.isEnabled`.
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 

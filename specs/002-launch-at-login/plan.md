@@ -1,6 +1,6 @@
 # Implementation Plan: Launch at Login
 
-**Branch**: `[002-launch-at-login]` | **Date**: 2026-08-01 | **Spec**: [spec.md](file:///Users/Stanislav_Deviatov/src/github/overtype/specs/002-launch-at-login/spec.md)
+**Branch**: `[002-launch-at-login]` | **Date**: 2026-08-01 | **Spec**: [spec.md](./spec.md)
 
 **Input**: Feature specification from `/specs/002-launch-at-login/spec.md`
 
