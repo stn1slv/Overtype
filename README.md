@@ -1,15 +1,15 @@
 # Overtype
 
-Overtype is a native, lightweight macOS menu bar utility that applies AI-powered transformations (like grammar correction) directly to text you're typing in *any* application.
+Overtype is a native, lightweight macOS menu bar utility that applies AI-powered transformations (like grammar correction) directly to text you select in *any* application.
 
 It securely modifies text via macOS Accessibility APIs, completely bypassing the system clipboard to ensure maximum privacy and compliance with enterprise security policies.
 
 ## Features
 
 - **Clipboard Isolation**: Overtype never touches `NSPasteboard`. It reads and types text strictly through the macOS Accessibility API (`AXUIElement` & `CGEvent`).
-- **AI Integrations**: Natively supports OpenAI (like GPT-5-mini). (Anthropic and Ollama support coming soon).
+- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano). (Anthropic and Ollama support coming soon).
 - **Global Hotkeys**: Highlight text in any application (like MS Teams or Apple Notes), hit a shortcut (e.g. ⌃⌥⌘G), and watch the text get magically replaced inline.
-- **Privacy First**: Sensitive text is never written to disk. Only standard, sanitized application logs are recorded.
+- **Privacy First**: By default, sensitive text is never written to disk; only standard, sanitized application logs are recorded. Unredacted text is logged only if you explicitly enable debug logging.
 
 ## Installation
 
@@ -55,7 +55,7 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
       "id": "openai",
       "kind": "openai",
       "baseURL": "https://api.openai.com/v1",
-      "defaultModel": "gpt-5-mini",
+      "defaultModel": "gpt-5.4-nano",
       "timeoutSeconds": 30.0,
       "keychainKey": "overtype-openai-key"
     }

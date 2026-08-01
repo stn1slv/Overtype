@@ -219,6 +219,50 @@ has already been wrong.
 
 ---
 
+## Known Deviations
+
+This section records places where the current code does not yet meet a principle
+above. It exists so the gaps are tracked honestly rather than hidden. It does not
+relax any principle: each item below is a debt to be closed, not a permitted
+exception. Added in constitution version 1.1.0 (2026-08-01) after a full audit of
+the code against this document.
+
+- **Release signing and notarisation (Platform constraints, lines 180-182).**
+  As of 2026-08-01, release builds are ad hoc signed only. `scripts/build-app.sh`
+  runs `codesign --force --deep --sign -`, and `.github/workflows/release.yml`
+  ships that bundle with no Developer ID signature and no notarisation step.
+  Downloaded releases will therefore trip Gatekeeper. This must be closed before
+  any distribution beyond a personal tap.
+
+- **Missing unit tests (Principle VIII).** No tests cover configuration
+  migration or shortcut encoding, though both are named as required. The
+  `ActionShortcut` encoding in `Config/AppConfig.swift` is non-trivial and
+  currently untested. `Tests/OvertypeTests/PromptTemplateTests.swift` asserts an
+  inline string operation rather than the production templating code, so prompt
+  templating is effectively untested as well.
+
+- **Uncommented Core Foundation casts (Principle VII).** The `as! AXUIElement`
+  casts in `Support/AXHelpers.swift` are of the permitted kind, but they lack the
+  per-site explanatory comment that Principle VII mandates.
+
+- **No user warning for debug logging (Principle V).** Enabling debug logging
+  raises the log level for selected text and model output, but the user is not
+  shown the required explicit warning. Only a code comment in
+  `Support/Logger.swift` notes the concern.
+
+- **Stale packaged config sample.** `Support/Overtype/config.json` no longer
+  matches the `Codable` model (it uses `type` instead of `kind` and omits
+  required fields) and is not declared as a package resource, so it is never
+  loaded. The effective default is the inline JSON in `Config/DefaultConfig.swift`.
+  The sample should be corrected or removed to avoid confusion.
+
+- **Unjustified third-party dependency (Principle VII).** `Package.swift` pins
+  `sindresorhus/KeyboardShortcuts`, but the plan-level justification that
+  Principle VII requires is not recorded. It should be added to
+  `specs/001-overtype/plan.md`.
+
+---
+
 ## Governance
 
 **Supremacy.** This constitution supersedes all other project practices,
@@ -247,4 +291,8 @@ checklist above, and before each release through the manual acceptance
 procedure. Any deviation found MUST be either corrected or recorded as an
 explicit, dated exception in the plan that introduced it.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-07-31
+**Version**: 1.1.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-08-01
+
+*Amendment 1.1.0 (2026-08-01): added the "Known Deviations" section recording
+current gaps between the code and this document, following a full audit. No
+principle was changed or weakened.*

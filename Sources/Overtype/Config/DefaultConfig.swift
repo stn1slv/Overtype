@@ -15,7 +15,7 @@ public struct DefaultConfig {
               "id": "openai",
               "kind": "openai",
               "baseURL": "https://api.openai.com/v1",
-              "defaultModel": "gpt-4o-mini",
+              "defaultModel": "gpt-5.4-nano",
               "timeoutSeconds": 30.0,
               "keychainKey": "overtype-openai-key"
             }

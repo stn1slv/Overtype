@@ -11,7 +11,9 @@ is overwritten inline. It runs as a menu bar accessory with no Dock icon.
 
 ## Commands
 
-Swift Package Manager is the build system (no Makefile, no Xcode project).
+Swift Package Manager is the build system (no Xcode project). A `Makefile` at the
+repo root wraps the common tasks (`make build|test|lint|format|run|clean|setup|upgrade-deps`);
+each target delegates to the SPM/`swift` commands below. Run `make help` to list them.
 
 - Build (debug): `swift build`
 - Build (release): `swift build -c release`
@@ -34,15 +36,17 @@ builds via `build-app.sh`), the permission must be re-granted in System Settings
 
 ## Architecture
 
-Runtime entry point is `Sources/Overtype/OvertypeApp.swift`. `AppDelegate`
-creates the status-bar item, loads `ConfigStore`, has `HotkeyManager` register a
-global shortcut per configured action, and installs Escape-key monitors that
+Runtime entry point is `Sources/Overtype/OvertypeApp.swift`. `AppDelegate` runs
+the Accessibility permission gate (`UI/PermissionWindow.swift`,
+`PermissionManager`), creates the status-bar item, loads `ConfigStore`, has
+`HotkeyManager` register a global shortcut per configured action (via the
+third-party `KeyboardShortcuts` package), and installs Escape-key monitors that
 cancel any in-flight run.
 
 The core pipeline lives in `Core/ActionEngine.swift` (`run(action:)`). One run
 is a strict sequence, each stage gated on the previous succeeding:
 
-1. `SelectionReader` reads the selected text via the Accessibility API, capturing the source `pid` and focused `AXUIElement`.
+1. `SelectionReader` reads the selected text via the Accessibility API, capturing the source `pid` and focused `AXUIElement`. It delegates to `Support/AXHelpers.swift`, whose `getFocusedElement()` tries five strategies, ending in a depth-first accessibility-tree crawl to find the active text element in Electron, New Outlook, and React Native apps that do not propagate `kAXFocusedUIElementAttribute` (an inline QUIRK WORKAROUND comment marks it).
 2. The matching provider (from `ProviderRegistry`) performs the AI call. `Providers/OpenAICompatibleProvider.swift` uses `URLSession` async/await; providers conform to the `AIProvider` protocol.
 3. `Core/ResponseSanitizer.swift` cleans the model output (pure logic, unit-tested).
 4. **Context re-check before writing**: the engine verifies the frontmost `pid` still matches and the focused element is still `CFEqual` to the one read. If either changed, the write is aborted and nothing is modified.
@@ -52,12 +56,19 @@ is a strict sequence, each stage gated on the previous succeeding:
 error). UI must never take keyboard focus, since that would destroy the target
 app's selection.
 
+`Support/Logger.swift` (`Logger.shared`) wraps `os_log` with an `isDebugEnabled`
+gate and `sanitizedLog()`, which redacts selected text and model output unless
+debug logging is on. `UI/Settings/SettingsWindow.swift` is the SwiftUI settings
+window: today only the General tab is functional (OpenAI API-key entry to the
+Keychain and an "Open config.json" button), while the Actions and Providers tabs
+are placeholders marked "Coming Soon".
+
 ### Configuration and extension model
 
-- `Config/AppConfig.swift` defines the `Codable` config model; `Config/ConfigStore.swift` loads/persists `~/Library/Application Support/Overtype/config.json`; `Config/DefaultConfig.swift` seeds defaults. `Support/Overtype/config.json` is the packaged default.
+- `Config/AppConfig.swift` defines the `Codable` config model; `Config/ConfigStore.swift` loads/persists `~/Library/Application Support/Overtype/config.json`; `Config/DefaultConfig.swift` holds the effective default as an inline JSON string and seeds it on first launch. Note: `Support/Overtype/config.json` is a stale sample, not the packaged default. It is not declared as a package resource in `Package.swift`, is never loaded, and no longer matches the model (it uses `type` instead of `kind` and omits required fields, so it would fail to decode). Treat `DefaultConfig.swift` as the source of truth.
 - Config has three parts: `global` (typing speed/HUD), `providers` (id, kind, baseURL, defaultModel, keychainKey), and `actions` (title, shortcut, providerID, optional model, systemPrompt, userPromptTemplate, temperature, limits, writeStrategy).
 - Model resolution order: action-level `model`, then provider `defaultModel`.
-- **Adding an automation requires no Swift code** — it is a declarative action record in config (or created via Settings).
+- **Adding an automation requires no Swift code**: it is a declarative action record in config. Today actions are added by editing `config.json` directly; the in-app Actions editor in Settings is not yet implemented.
 - **Adding an AI provider** requires exactly three edits: a new case in the provider-kind enum, a new type conforming to `AIProvider`, and one line in `Providers/ProviderRegistry.swift`. `anthropic` and `ollama` are enum cases with stubbed (not yet implemented) branches there.
 - API keys live only in the macOS Keychain (`Security/KeychainStore.swift`), referenced by `keychainKey`; they are never written to config, UserDefaults, logs, or the UI.
 
