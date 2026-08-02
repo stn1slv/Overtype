@@ -26,14 +26,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // duplicate global hotkeys that fight each other, so if another instance is
     // already running we quit before creating the status item or any hotkeys.
     // LSMultipleInstancesProhibited in Info.plist blocks the normal second
-    // launch race-free; this runtime check is a backstop for `open -n` and the
-    // (very unlikely) simultaneous-launch race, where both copies could see
-    // each other and both quit.
+    // launch race-free; this runtime check is a backstop for `open -n`. We quit
+    // only if an older instance (smaller PID) exists, so a simultaneous launch
+    // leaves exactly one survivor instead of both quitting.
     if let bundleID = Bundle.main.bundleIdentifier {
       let ownPID = getpid()
-      let hasOtherInstance = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        .contains { $0.processIdentifier != ownPID }
-      if hasOtherInstance {
+      let hasOlderInstance = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        .contains { $0.processIdentifier < ownPID }
+      if hasOlderInstance {
         Logger.shared.log(
           "Another Overtype instance is already running; exiting this one.", level: .info)
         NSApp.terminate(nil)

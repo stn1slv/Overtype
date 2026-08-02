@@ -35,17 +35,19 @@ public final class SettingsViewModel: ObservableObject {
 
   public func reloadFromDisk() {
     let config = ConfigStore.shared.config
+    let storeOverrides = SettingsViewModel.buildOverridesList(
+      from: config, preservingIDsFrom: appOverridesList)
     // This runs on every settings-window refocus. Skip the resync when the user
-    // has unsaved in-memory edits, otherwise a half-entered override row or
-    // unsaved cadence change would be silently discarded when focus briefly
-    // leaves and returns.
-    guard currentInMemoryConfig() == config else { return }
+    // has unsaved in-memory edits, otherwise a half-entered row or unsaved change
+    // would be silently discarded when focus briefly leaves and returns. The
+    // first check catches in-progress override rows, including a newly added row
+    // whose bundleID is still empty (which currentInMemoryConfig normalizes away);
+    // the second catches cadence, provider, and action edits.
+    guard appOverridesList == storeOverrides, currentInMemoryConfig() == config else { return }
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    // Preserve each row's id so an unchanged list keeps stable ForEach identity.
-    self.appOverridesList = SettingsViewModel.buildOverridesList(
-      from: config, preservingIDsFrom: self.appOverridesList)
+    self.appOverridesList = storeOverrides
   }
 
   /// The AppConfig the current in-memory edits would produce if saved. Used to
