@@ -17,4 +17,10 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertEqual(config?.actions.first?.id, "fix-grammar")
         XCTAssertEqual(config?.actions.first?.providerID, "openai")
     }
+
+    func testDefaultConfigHasVerifiedOutlookTypingOverride() {
+        let override = DefaultConfig.defaultConfig?.global.appTypingOverrides?["com.microsoft.Outlook"]
+        XCTAssertEqual(override?.typingChunkSize, 1)
+        XCTAssertEqual(override?.typingDelayMicroseconds, 10000)
+    }
 }

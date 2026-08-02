@@ -19,10 +19,27 @@ public struct GeneralConfig: Codable, Equatable {
     public var showHUD: Bool
     public var typingChunkSize: Int?
     public var typingDelayMicroseconds: Int?
+    /// Per-app typing overrides keyed by bundle identifier. Web/Chromium editors
+    /// (e.g. new Outlook) apply synthetic keystrokes asynchronously and reorder them
+    /// under a fast burst, so they need a slower, verified cadence than the default.
+    public var appTypingOverrides: [String: AppTypingOverride]?
 
-    public init(typingSpeedMultiplier: Double = 1.0, showHUD: Bool = true, typingChunkSize: Int? = 20, typingDelayMicroseconds: Int? = 2000) {
+    public init(typingSpeedMultiplier: Double = 1.0, showHUD: Bool = true, typingChunkSize: Int? = 20, typingDelayMicroseconds: Int? = 2000, appTypingOverrides: [String: AppTypingOverride]? = nil) {
         self.typingSpeedMultiplier = typingSpeedMultiplier
         self.showHUD = showHUD
+        self.typingChunkSize = typingChunkSize
+        self.typingDelayMicroseconds = typingDelayMicroseconds
+        self.appTypingOverrides = appTypingOverrides
+    }
+}
+
+/// Overrides the typing cadence for a specific application. Either field is optional;
+/// a nil field falls back to the corresponding global `GeneralConfig` value.
+public struct AppTypingOverride: Codable, Equatable {
+    public var typingChunkSize: Int?
+    public var typingDelayMicroseconds: Int?
+
+    public init(typingChunkSize: Int? = nil, typingDelayMicroseconds: Int? = nil) {
         self.typingChunkSize = typingChunkSize
         self.typingDelayMicroseconds = typingDelayMicroseconds
     }

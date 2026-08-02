@@ -21,11 +21,64 @@ public class TextWriter: TextWriting {
 
         switch strategy {
         case .typing:
-            try writeViaCGEvent(text: text, settings: settings, validateContext: validateContext)
+            // QUIRK WORKAROUND: web/Chromium editors (notably the new Outlook,
+            // com.microsoft.Outlook) apply synthetic keystrokes asynchronously and
+            // reorder/drop them under a fast burst, corrupting the output. Resolve a
+            // per-app typing profile from the source app's bundle id so those apps get
+            // a slower, empirically verified cadence while native apps stay fast.
+            let bundleID = NSRunningApplication(processIdentifier: selection.pid)?.bundleIdentifier
+            let profile = Self.typingProfile(bundleID: bundleID, settings: settings)
+            try writeViaCGEvent(text: text,
+                                profile: profile,
+                                speedMultiplier: settings.typingSpeedMultiplier,
+                                bundleID: bundleID,
+                                validateContext: validateContext)
         }
     }
 
-    private func writeViaCGEvent(text: String, settings: GeneralConfig, validateContext: () throws -> Void) throws {
+    /// Effective typing cadence for one write.
+    struct TypingProfile: Equatable {
+        let chunkSize: Int
+        let delayMicroseconds: Int
+    }
+
+    /// Resolves the typing cadence for the target app: a per-app override (matched by
+    /// bundle id) wins field-by-field over the global defaults, which themselves fall
+    /// back to 20 units / 2000 microseconds. Pure logic, unit-tested.
+    static func typingProfile(bundleID: String?, settings: GeneralConfig) -> TypingProfile {
+        let globalChunk = settings.typingChunkSize ?? 20
+        let globalDelay = settings.typingDelayMicroseconds ?? 2000
+
+        if let bundleID = bundleID, let override = settings.appTypingOverrides?[bundleID] {
+            return TypingProfile(
+                chunkSize: override.typingChunkSize ?? globalChunk,
+                delayMicroseconds: override.typingDelayMicroseconds ?? globalDelay
+            )
+        }
+        return TypingProfile(chunkSize: globalChunk, delayMicroseconds: globalDelay)
+    }
+
+    /// Scales the base per-chunk delay by the speed multiplier. A non-positive
+    /// multiplier from config is treated as the neutral 1.0. The scaled result is
+    /// clamped to `[0, 1_000_000]` microseconds before the `Int()` conversion: a tiny
+    /// positive multiplier (or an oversized base delay) can push the value past
+    /// `Int.max` or to infinity, which would trap; and no per-chunk delay ever needs to
+    /// exceed one second. Pure logic, unit-tested.
+    static func effectiveDelayMicroseconds(base: Int, speedMultiplier: Double) -> Int {
+        let maxDelayMicroseconds = 1_000_000.0
+        let effectiveMultiplier = speedMultiplier > 0 ? speedMultiplier : 1.0
+        let scaled = Double(base) / effectiveMultiplier
+
+        if !scaled.isFinite { return Int(maxDelayMicroseconds) }
+        if scaled <= 0 { return 0 }
+        return Int(min(scaled, maxDelayMicroseconds))
+    }
+
+    private func writeViaCGEvent(text: String,
+                                 profile: TypingProfile,
+                                 speedMultiplier: Double,
+                                 bundleID: String?,
+                                 validateContext: () throws -> Void) throws {
         // According to our research, we must clear modifier keys before typing synthetic events
         // so we don't accidentally send Cmd+A instead of 'a'.
 
@@ -72,11 +125,10 @@ public class TextWriter: TextWriting {
         // Let the UI catch up
         Thread.sleep(forTimeInterval: 0.05)
         
-        let chunkSize = settings.typingChunkSize ?? 20
-        let baseDelayUs = settings.typingDelayMicroseconds ?? 2000
-        let delayUs = Int(Double(baseDelayUs) / settings.typingSpeedMultiplier)
-        
-        Logger.shared.log("Effective typing config - deliveryMethod: chunked, chunkSize: \(chunkSize), delayUS: \(delayUs)", level: .info)
+        let chunkSize = profile.chunkSize
+        let delayUs = Self.effectiveDelayMicroseconds(base: profile.delayMicroseconds, speedMultiplier: speedMultiplier)
+
+        Logger.shared.log("Effective typing config - bundleID: \(bundleID ?? "unknown"), chunkSize: \(chunkSize), delayUS: \(delayUs)", level: .info)
         
         let utf16Chars = Array(text.utf16)
         let totalChars = utf16Chars.count

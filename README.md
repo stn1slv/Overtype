@@ -47,7 +47,10 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
     "typingSpeedMultiplier": 1.0,
     "showHUD": true,
     "typingChunkSize": 20,
-    "typingDelayMicroseconds": 2000
+    "typingDelayMicroseconds": 2000,
+    "appTypingOverrides": {
+      "com.microsoft.Outlook": { "typingChunkSize": 1, "typingDelayMicroseconds": 10000 }
+    }
   },
   "providers": [
     {
@@ -82,8 +85,9 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
 
 Overtype sends simulated keystrokes to type out the AI's response inline. You can tune the typing performance inside the `"global"` configuration block:
 - **`typingChunkSize`** (Integer, default `20`): The number of UTF-16 characters sent in a single keystroke event. Chunking makes text insertion dramatically faster.
-- **`typingDelayMicroseconds`** (Integer, default `2000`): The delay in microseconds (sub-millisecond) between sending chunks. If certain apps drop characters, try increasing this delay.
+- **`typingDelayMicroseconds`** (Integer, default `2000`): The delay in microseconds between sending chunks (the default `2000` is 2 ms). If certain apps drop characters, try increasing this delay.
 - **`typingSpeedMultiplier`** (Double, default `1.0`): Scales the effective delay between chunks. Values above `1.0` type faster (shorter delay); values below `1.0` type slower.
+- **`appTypingOverrides`** (Object, optional): Per-application typing overrides keyed by macOS bundle identifier. Each entry may set `typingChunkSize` and/or `typingDelayMicroseconds`; any field left out falls back to the global value. Use this for web/Chromium-based editors (such as the new Outlook) that apply synthetic keystrokes asynchronously and corrupt the output at the default fast cadence. The default configuration ships a verified profile for the new Outlook (`com.microsoft.Outlook`) that types one character at a time with a 10 ms delay.
 
 ### Configuring the API Key
 
