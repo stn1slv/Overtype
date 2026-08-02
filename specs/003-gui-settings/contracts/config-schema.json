@@ -1,22 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "OvertypeConfig",
-  "type": "OBJECT",
+  "type": "object",
   "properties": {
     "global": {
-      "type": "OBJECT",
+      "type": "object",
       "properties": {
-        "typingSpeedMultiplier": { "type": "NUMBER", "minimum": 0.1, "maximum": 10.0 },
-        "showHUD": { "type": "BOOLEAN" },
-        "typingChunkSize": { "type": ["INTEGER", "NULL"], "minimum": 1 },
-        "typingDelayMicroseconds": { "type": ["INTEGER", "NULL"], "minimum": 0 },
+        "typingSpeedMultiplier": { "type": "number", "minimum": 0.1, "maximum": 10.0 },
+        "showHUD": { "type": "boolean" },
+        "typingChunkSize": { "type": ["integer", "null"], "minimum": 1 },
+        "typingDelayMicroseconds": { "type": ["integer", "null"], "minimum": 0 },
         "appTypingOverrides": {
-          "type": "OBJECT",
+          "type": "object",
           "additionalProperties": {
-            "type": "OBJECT",
+            "type": "object",
             "properties": {
-              "typingChunkSize": { "type": ["INTEGER", "NULL"], "minimum": 1 },
-              "typingDelayMicroseconds": { "type": ["INTEGER", "NULL"], "minimum": 0 }
+              "typingChunkSize": { "type": ["integer", "null"], "minimum": 1 },
+              "typingDelayMicroseconds": { "type": ["integer", "null"], "minimum": 0 }
             },
             "required": []
           }
@@ -25,45 +25,45 @@
       "required": ["typingSpeedMultiplier", "showHUD"]
     },
     "providers": {
-      "type": "ARRAY",
+      "type": "array",
       "items": {
-        "type": "OBJECT",
+        "type": "object",
         "properties": {
-          "id": { "type": "STRING", "pattern": "^[a-z0-9-]+$" },
-          "kind": { "type": "STRING", "enum": ["openai"] },
-          "baseURL": { "type": "STRING", "format": "uri" },
-          "defaultModel": { "type": "STRING" },
-          "timeoutSeconds": { "type": "NUMBER", "minimum": 1.0, "maximum": 300.0 },
-          "keychainKey": { "type": "STRING" }
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "kind": { "type": "string", "enum": ["openai"] },
+          "baseURL": { "type": "string", "format": "uri" },
+          "defaultModel": { "type": "string" },
+          "timeoutSeconds": { "type": "number", "minimum": 1.0, "maximum": 300.0 },
+          "keychainKey": { "type": "string" }
         },
         "required": ["id", "kind", "defaultModel", "timeoutSeconds"]
       }
     },
     "actions": {
-      "type": "ARRAY",
+      "type": "array",
       "items": {
-        "type": "OBJECT",
+        "type": "object",
         "properties": {
-          "id": { "type": "STRING", "pattern": "^[a-z0-9-]+$" },
-          "title": { "type": "STRING" },
-          "enabled": { "type": "BOOLEAN" },
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "title": { "type": "string" },
+          "enabled": { "type": "boolean" },
           "shortcut": {
-            "type": ["OBJECT", "NULL"],
+            "type": ["object", "null"],
             "properties": {
-              "keyCode": { "type": "INTEGER" },
-              "modifiers": { "type": "INTEGER" },
-              "displayString": { "type": "STRING" }
+              "keyCode": { "type": "integer" },
+              "modifiers": { "type": "integer" },
+              "displayString": { "type": "string" }
             },
             "required": ["keyCode", "modifiers", "displayString"]
           },
-          "providerID": { "type": "STRING" },
-          "model": { "type": ["STRING", "NULL"] },
-          "systemPrompt": { "type": "STRING" },
-          "userPromptTemplate": { "type": "STRING" },
-          "temperature": { "type": "NUMBER", "minimum": 0.0, "maximum": 2.0 },
-          "maxInputCharacters": { "type": "INTEGER", "minimum": 1 },
-          "allowNewlines": { "type": "BOOLEAN" },
-          "writeStrategy": { "type": "STRING", "enum": ["typing"] }
+          "providerID": { "type": "string" },
+          "model": { "type": ["string", "null"] },
+          "systemPrompt": { "type": "string" },
+          "userPromptTemplate": { "type": "string" },
+          "temperature": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+          "maxInputCharacters": { "type": "integer", "minimum": 1 },
+          "allowNewlines": { "type": "boolean" },
+          "writeStrategy": { "type": "string", "enum": ["typing"] }
         },
         "required": ["id", "title", "enabled", "providerID", "systemPrompt", "userPromptTemplate", "temperature", "maxInputCharacters", "allowNewlines", "writeStrategy"]
       }

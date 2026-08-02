@@ -40,9 +40,10 @@ public class PermissionManager {
 
       let response = alert.runModal()
       if response == .alertFirstButtonReturn {
-        let url = URL(
-          string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-        NSWorkspace.shared.open(url)
+        if let url = URL(
+          string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+          NSWorkspace.shared.open(url)
+        }
       } else {
         NSApp.terminate(nil)
       }

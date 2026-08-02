@@ -48,10 +48,11 @@ public final class SettingsViewModel: ObservableObject {
     // Map draft overrides list back to dictionary
     var overridesDict: [String: AppTypingOverride] = [:]
     for draft in appOverridesList {
-      guard !draft.bundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      let trimmedBundleID = draft.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmedBundleID.isEmpty else {
         continue
       }
-      overridesDict[draft.bundleID] = AppTypingOverride(
+      overridesDict[trimmedBundleID] = AppTypingOverride(
         typingChunkSize: draft.chunkSize,
         typingDelayMicroseconds: draft.delay
       )
@@ -92,9 +93,10 @@ public final class SettingsViewModel: ObservableObject {
         userInfo: [NSLocalizedDescriptionKey: "Default model cannot be empty."])
     }
 
+    let trimmedBaseURL = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
     let url: URL?
-    if !baseURLString.isEmpty {
-      guard let parsedURL = URL(string: baseURLString), parsedURL.scheme != nil else {
+    if !trimmedBaseURL.isEmpty {
+      guard let parsedURL = URL(string: trimmedBaseURL), parsedURL.scheme != nil else {
         throw NSError(
           domain: "SettingsError", code: 3,
           userInfo: [NSLocalizedDescriptionKey: "Invalid Base URL."])

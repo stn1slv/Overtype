@@ -25,14 +25,19 @@ public class OpenAICompatibleProvider: AIProvider {
     urlRequest.httpMethod = "POST"
     urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
-    // Fetch API Key from Keychain if configured
-    if let keychainKey = config.keychainKey {
-      do {
-        let apiKey = try KeychainStore.shared.retrieve(key: keychainKey)
-        urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-      } catch {
+    // Fetch API Key from Keychain
+    guard let keychainKey = config.keychainKey, !keychainKey.isEmpty else {
+      throw ProviderError.apiKeyMissing
+    }
+
+    do {
+      let apiKey = try KeychainStore.shared.retrieve(key: keychainKey)
+      guard !apiKey.isEmpty else {
         throw ProviderError.apiKeyMissing
       }
+      urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    } catch {
+      throw ProviderError.apiKeyMissing
     }
 
     let userPrompt = request.userPromptTemplate.replacingOccurrences(

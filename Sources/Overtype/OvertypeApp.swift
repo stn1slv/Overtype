@@ -100,7 +100,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc func configDidChange() {
-    Logger.shared.log("Configuration changed. Re-registering hotkeys...", level: .info)
+    Logger.shared.log("Configuration changed. Reloading providers and hotkeys...", level: .info)
+    ProviderRegistry.shared.reloadProviders()
     hotkeyManager.registerHotkeys(for: ConfigStore.shared.config.actions) { [weak self] action in
       self?.engine.run(action: action)
     }
