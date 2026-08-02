@@ -37,8 +37,8 @@ builds via `build-app.sh`), the permission must be re-granted in System Settings
 ## Architecture
 
 Runtime entry point is `Sources/Overtype/OvertypeApp.swift`. `AppDelegate` runs
-the Accessibility permission gate (`UI/PermissionWindow.swift`,
-`PermissionManager`), creates the status-bar item, loads `ConfigStore`, has
+the Accessibility permission check (`Support/PermissionManager.swift`, which uses
+the native macOS prompt), creates the status-bar item, loads `ConfigStore`, has
 `HotkeyManager` register a global shortcut per configured action (via the
 third-party `KeyboardShortcuts` package), and installs Escape-key monitors that
 cancel any in-flight run.

@@ -20,4 +20,4 @@ Because Overtype depends on the macOS Accessibility API (AX) to read and manipul
 If an application is rejecting input:
 1. Ensure the app has active focus.
 2. Ensure you have granted Accessibility permission in System Settings.
-3. Try increasing `typingDelayMs` in `config.json` if characters are being dropped during insertion (especially common in heavily-scripted web rich-text editors like Google Docs).
+3. Try increasing `typingDelayMicroseconds` (or lowering `typingSpeedMultiplier`) in `config.json` if characters are being dropped during insertion (especially common in heavily-scripted web rich-text editors like Google Docs).

@@ -62,9 +62,18 @@ public struct GeneralTab: View {
         }
     }
     
+    /// Keychain item that backs the OpenAI provider. Resolved from config so it stays
+    /// in sync if the user changes `keychainKey`, instead of a hardcoded literal.
+    private var openAIKeychainKey: String {
+        let providers = ConfigStore.shared.config.providers
+        let provider = providers.first(where: { $0.kind == .openAICompatible })
+            ?? providers.first(where: { $0.id == "openai" })
+        return provider?.keychainKey ?? "overtype-openai-key"
+    }
+
     private func saveKey() {
         do {
-            try KeychainStore.shared.store(key: "overtype-openai-key", value: openAIApiKey)
+            try KeychainStore.shared.store(key: openAIKeychainKey, value: openAIApiKey)
             isSaved = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 isSaved = false
@@ -73,9 +82,9 @@ public struct GeneralTab: View {
             Logger.shared.log("Failed to save API key", level: .error)
         }
     }
-    
+
     private func loadKey() {
-        if let key = try? KeychainStore.shared.retrieve(key: "overtype-openai-key") {
+        if let key = try? KeychainStore.shared.retrieve(key: openAIKeychainKey) {
             openAIApiKey = key
         }
     }

@@ -6,15 +6,13 @@ public struct TransformRequest {
     public let userPromptTemplate: String
     public let model: String
     public let temperature: Double
-    public let timeoutSeconds: Double
-    
-    public init(text: String, systemPrompt: String, userPromptTemplate: String, model: String, temperature: Double, timeoutSeconds: Double) {
+
+    public init(text: String, systemPrompt: String, userPromptTemplate: String, model: String, temperature: Double) {
         self.text = text
         self.systemPrompt = systemPrompt
         self.userPromptTemplate = userPromptTemplate
         self.model = model
         self.temperature = temperature
-        self.timeoutSeconds = timeoutSeconds
     }
 }
 
@@ -31,7 +29,8 @@ public enum ProviderError: Error, LocalizedError {
     case invalidResponse
     case timeout
     case cancelled
-    
+    case contextChanged
+
     public var errorDescription: String? {
         switch self {
         case .apiKeyMissing:
@@ -48,6 +47,8 @@ public enum ProviderError: Error, LocalizedError {
             return "The request timed out."
         case .cancelled:
             return "The request was cancelled."
+        case .contextChanged:
+            return "The selection or active app changed before writing, so nothing was changed."
         }
     }
 }

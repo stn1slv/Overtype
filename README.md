@@ -44,7 +44,6 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
 ```json
 {
   "global": {
-    "typingDelayMs": 150,
     "typingSpeedMultiplier": 1.0,
     "showHUD": true,
     "typingChunkSize": 20,
@@ -84,7 +83,7 @@ You can manage your actions, hotkeys, and AI templates via the JSON configuratio
 Overtype sends simulated keystrokes to type out the AI's response inline. You can tune the typing performance inside the `"global"` configuration block:
 - **`typingChunkSize`** (Integer, default `20`): The number of UTF-16 characters sent in a single keystroke event. Chunking makes text insertion dramatically faster.
 - **`typingDelayMicroseconds`** (Integer, default `2000`): The delay in microseconds (sub-millisecond) between sending chunks. If certain apps drop characters, try increasing this delay.
-- **`typingDelayMs`** (Integer, legacy): Used as a legacy fallback.
+- **`typingSpeedMultiplier`** (Double, default `1.0`): Scales the effective delay between chunks. Values above `1.0` type faster (shorter delay); values below `1.0` type slower.
 
 ### Configuring the API Key
 

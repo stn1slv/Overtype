@@ -17,7 +17,8 @@ public class ConfigStore: ConfigStoring {
     
     private init() {
         let fileManager = FileManager.default
-        let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let appDirectory = appSupportURL.appendingPathComponent("Overtype")
         
         if !fileManager.fileExists(atPath: appDirectory.path) {
@@ -35,7 +36,7 @@ public class ConfigStore: ConfigStoring {
             currentConfig = try JSONDecoder().decode(AppConfig.self, from: data)
         } catch {
             Logger.shared.log("Failed to load config, falling back to default: \(error)", level: .error)
-            currentConfig = DefaultConfig.defaultConfig!
+            currentConfig = DefaultConfig.defaultConfig ?? DefaultConfig.fallbackConfig
         }
     }
     
