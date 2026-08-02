@@ -65,7 +65,7 @@ A user invokes an action with no text selected, or in a genuinely unsupported ap
 
 - **FR-001**: When the existing focused-element lookup strategies find no element with a live selection, the system MUST attempt a bounded recovery instead of failing immediately.
 - **FR-002**: The recovery MUST wake the target application's accessibility support by setting the two known assistive-client flags on the target application, and MUST ignore the reported result codes of those calls, because at least one target application (Microsoft Teams) reports an error while honoring the call. This site MUST carry an inline comment naming the quirk (Principle III).
-- **FR-003**: The recovery MUST retry the focused-element lookup, querying the application element first, up to 12 attempts at 150 ms intervals, matching the empirically validated configuration from the 2026-07-31 axprobe findings (binding conclusion #3).
+- **FR-003**: The recovery MUST retry the focused-element lookup, querying the application element first, up to 24 attempts at 150 ms intervals. The ordering and interval come from the 2026-07-31 axprobe findings (binding conclusion #3); the attempt count was raised from the findings' 12 after the 2026-08-02 acceptance run showed a truly cold Teams populates the selection attribute only about 2.7 seconds after the wake.
 - **FR-004**: The recovery MUST apply a bounded messaging timeout (2 seconds) to accessibility queries issued during the recovery, so a hung target application cannot stall a run beyond the hard timeout.
 - **FR-005**: The fast path MUST remain unchanged: if the existing strategies find the selection, no flags are set, no retries occur, and no latency is added.
 - **FR-006**: The recovery window MUST respect cancellation: a user-initiated cancel (Escape) during the retry window MUST end the run promptly with no modification to the target document.
@@ -83,7 +83,7 @@ A user invokes an action with no text selected, or in a genuinely unsupported ap
 
 - **SC-001**: After restarting Microsoft Teams, the first Overtype run against a Teams selection succeeds without any external warm-up, in at most 3 seconds more than a warm run.
 - **SC-002**: Runs against applications that already work (Outlook, native apps, warmed Teams) show no measurable latency increase (within normal variance) and no behavioral change.
-- **SC-003**: With nothing selected, the failure message and its timing stay within about two seconds of added delay compared to today.
+- **SC-003**: With nothing selected, the failure message is unchanged; in apps with an awake tree it stays instant, and in the cold-tree case the added delay stays within the bounded recovery window (about four seconds).
 - **SC-004**: Escape pressed during the recovery window cancels the run in under one second, with the target document untouched.
 - **SC-005**: The recorded manual acceptance for Teams in `docs/compatibility.md` passes from a cold Teams restart, twice in a row.
 

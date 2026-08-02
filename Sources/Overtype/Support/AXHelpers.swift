@@ -25,7 +25,11 @@ public class AXHelpers {
 
   /// Empirically validated dormant-tree recovery configuration
   /// (axprobe findings 2026-07-31, binding conclusion #3; re-verified 2026-08-02).
-  private static let recoveryAttempts = 12
+  /// 24 attempts, not the findings' 12: the acceptance run against a truly cold
+  /// Teams (2026-08-02 21:40) showed the focused element appears quickly after
+  /// the wake but its selection attribute populates only ~2.7 s in; 12 x 150 ms
+  /// (1.8 s) missed it, 24 x 150 ms (~3.5 s) covers it with margin.
+  private static let recoveryAttempts = 24
   private static let recoveryIntervalSeconds: TimeInterval = 0.15
   private static let recoveryMessagingTimeoutSeconds: Float = 2.0
 

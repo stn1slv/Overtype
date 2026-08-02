@@ -61,10 +61,10 @@ sources; no open NEEDS CLARIFICATION items.
   Chromium (rejected: axprobe v1 issued repeated queries and failed 5/5);
   asking the user to run VoiceOver once (rejected: manual, absurd UX).
 
-## Decision 3: Retry configuration - app-element-first, 12 x 150 ms, 2 s messaging timeout
+## Decision 3: Retry configuration - app-element-first, 24 x 150 ms, 2 s messaging timeout
 
 - **Decision**: After setting the flags, retry the focused-element lookup up
-  to 12 times at 150 ms intervals, querying
+  to 24 times at 150 ms intervals, querying
   `AXUIElementCreateApplication(pid)` first and the system-wide element
   second, with `AXUIElementSetMessagingTimeout(2.0)` applied to both.
 - **Rationale**: This is the exact configuration validated by axprobe v2/v3
@@ -74,11 +74,19 @@ sources; no open NEEDS CLARIFICATION items.
   app-element-first ordering matters. The messaging timeout bounds each query
   against a hung AX server so the whole recovery stays within the run's hard
   timeout.
-- **Alternatives considered**: longer/adaptive retry windows (rejected: no
-  evidence they are needed; the bounded window keeps SC-003's failure-timing
-  promise); rerunning the full 5-strategy chain each attempt (rejected: the
-  DFS crawl is the expensive part and the findings show the app element is
-  what recovers).
+- **Amendment (2026-08-02, acceptance run)**: the findings' 12 attempts were
+  measured against a partially warmed Teams. The first acceptance run against
+  a truly cold Teams (pid 46804, 21:40) showed the focused element appears
+  quickly after the wake but its `kAXSelectedText` populates only ~2.7 s in,
+  so 12 x 150 ms (1.8 s) expired just short and the first press ended in
+  `cannotReadSelectedText` (the second press then succeeded instantly). The
+  attempt count was raised to 24 (~3.5 s) to cover the observed cold latency
+  with margin. VS Code's recorded 13 s outlier remains out of reach by
+  design; a second press covers it.
+- **Alternatives considered**: rerunning the full 5-strategy chain each
+  attempt (rejected: the DFS crawl is the expensive part and the findings
+  show the app element is what recovers); unbounded/adaptive windows
+  (rejected: the bounded window keeps failures fast and cancellable).
 
 ## Decision 4: Recovery only on the read path, not the pre-write re-check
 

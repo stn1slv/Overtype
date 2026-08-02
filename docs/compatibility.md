@@ -17,14 +17,14 @@ Verified 2026-08-02 (live diagnostic against Teams `com.microsoft.teams2`, proce
 - After the Teams process restarts, its accessibility tree is **dormant**: every AX query (focused element, focused window, main window) returns `noValue` immediately, so a single-shot lookup fails with `noFocusedElement` in ~12 ms. The tree stays dormant until an assistive client announces itself.
 - Setting `AXEnhancedUserInterface = true` on the Teams application element wakes the tree. **The set call returns `.notImplemented` (-25208) yet takes effect** (read-back flips to true; reads started succeeding with no other change). Do not treat the AX return code as evidence in either direction; this is the read-side mirror of the known Teams write quirk (set-selected-text returns success while changing nothing; see the constitution, Principle III rationale).
 - `AXManualAccessibility` is the Electron equivalent: accepted by VS Code and Claude desktop, rejected by Teams (`attributeUnsupported`).
-- Overtype therefore performs a bounded recovery when the normal lookup finds nothing: set both wake flags (ignoring their return codes), apply a 2 s AX messaging timeout, and retry the app-element-first lookup up to 12 times at 150 ms intervals (configuration validated by the 2026-07-31 axprobe series: Teams 11/11 reads, attempt 1-2). The recovery runs only on the failure path, so well-behaved apps see no change; the wake state persists until the target app restarts.
+- Overtype therefore performs a bounded recovery when the normal lookup finds nothing: set both wake flags (ignoring their return codes), apply a 2 s AX messaging timeout, and retry the app-element-first lookup up to 24 times at 150 ms intervals (ordering and interval validated by the 2026-07-31 axprobe series; the attempt count was raised from 12 after the 2026-08-02 cold-Teams acceptance run showed the selection attribute populates only ~2.7 s after the wake). The recovery runs only on the failure path, so well-behaved apps see no change; the wake state persists until the target app restarts.
 
 Manual acceptance for this feature (`specs/005-teams-ax-recovery/quickstart.md`):
 
 | Scenario | Expected | Result |
 |----------|----------|--------|
-| B. Cold Teams restart, first run recovers (twice) | Success within ~3 s of a warm run | pending |
-| C. Warm Teams / Outlook / native app unchanged | No recovery log lines, unchanged latency | pending |
+| B. Cold Teams restart, first run recovers (twice) | Success within ~3 s of a warm run | 2026-08-02 partial: recovery triggered and woke the cold tree (old build failed instantly in the same state); with the 12-attempt window the first press ended in the clean `cannotReadSelectedText` error and the second press succeeded instantly. Window raised to 24 attempts; single-press cold retest pending |
+| C. Warm Teams / Outlook / native app unchanged | No recovery log lines, unchanged latency | 2026-08-02 pass for warm Teams and Outlook (instant reads, no recovery lines); native app pending |
 | D. Nothing selected fails fast; Escape cancels recovery | Same errors; cancel < 1 s | pending |
 | E. Regression sweep (Outlook, native, VS Code) | Matches existing entries | pending |
 

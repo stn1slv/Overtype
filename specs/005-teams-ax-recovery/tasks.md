@@ -66,7 +66,7 @@ No foundational tasks. The feature builds entirely on existing code.
 **Independent Test**: quickstart.md scenario D.
 
 - [X] T010 [US3] Verify error/cancellation surface in `Sources/Overtype/Support/AXHelpers.swift` and `Sources/Overtype/Core/ActionEngine.swift`: recovery exhaustion still ends in the existing `noFocusedElement` / `cannotReadSelectedText` typed errors; `CancellationError` thrown inside the retry loop propagates to `ActionEngine`'s existing `catch is CancellationError` path (no new error cases introduced)
-- [ ] T011 [US3] MANUAL (requires user at the machine): execute quickstart.md scenario D (nothing-selected timing ≈ 2 s bound, SC-003; Escape during recovery cancels < 1 s with document untouched, SC-004)
+- [ ] T011 [US3] MANUAL (requires user at the machine): execute quickstart.md scenario D (nothing-selected timing within the bounded recovery window, SC-003; Escape during recovery cancels < 1 s with document untouched, SC-004)
 
 **Checkpoint**: All three stories verified.
 

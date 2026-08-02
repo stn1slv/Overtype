@@ -12,7 +12,7 @@ fails instantly with `noFocusedElement`. The fix adds a bounded recovery path,
 entered only when all existing lookup strategies fail: set the two assistive-client
 wake-up flags on the target application (ignoring their reported error codes,
 a verified quirk), apply a 2-second accessibility messaging timeout, and retry
-an app-element-first lookup up to 12 times at 150 ms intervals. The recovery is
+an app-element-first lookup up to 24 times at 150 ms intervals. The recovery is
 used only for the initial selection read; the pre-write context re-check keeps
 today's fast, single-shot behavior. All parameters come from the recorded
 2026-07-31 axprobe findings and the 2026-08-02 live diagnostic.
@@ -31,7 +31,7 @@ today's fast, single-shot behavior. All parameters come from the recorded
 
 **Project Type**: Desktop menu bar accessory app
 
-**Performance Goals**: Zero added latency on the fast path; recovery bounded to ~1.8 s of retries plus 2 s messaging timeout per query, always within the run's hard timeout
+**Performance Goals**: Zero added latency on the fast path; recovery bounded to ~3.5 s of retries plus 2 s messaging timeout per query, always within the run's hard timeout
 
 **Constraints**: No clipboard; non-destructive; recovery must respect Task cancellation (Escape); wake-up flags set only on the failure path (known Electron side effects)
 
@@ -46,7 +46,7 @@ today's fast, single-shot behavior. All parameters come from the recorded
 - **III. Evidence Over Assumption**: PASS. Every parameter (app-element-first, 12 x 150 ms, 2 s messaging timeout, both wake flags, ignoring their return codes) is bound to the recorded 2026-07-31 axprobe findings and the 2026-08-02 diagnostic run (documented in research.md). The ignore-error-code site and the wake-flag site carry QUIRK comments naming the behavior. `docs/compatibility.md` is updated with the dormant-tree entry.
 - **IV. Configuration Over Code**: PASS (not applicable). No new automation or provider surface. Deliberately no config knobs: the values are empirically fixed, and exposing them would invite untested combinations.
 - **V. Privacy and Secret Handling**: PASS. No new logging of selected text; recovery logs only attempt counts and error codes at appropriate levels.
-- **VI. No Silent Failure**: PASS. All existing typed errors (`noFocusedElement`, `cannotReadSelectedText`) are preserved; recovery is bounded (max ~1.8 s of sleeps + per-query timeout) and checks `Task.checkCancellation()` every attempt, so Escape works.
+- **VI. No Silent Failure**: PASS. All existing typed errors (`noFocusedElement`, `cannotReadSelectedText`) are preserved; recovery is bounded (max ~3.5 s of sleeps + per-query timeout) and checks `Task.checkCancellation()` every attempt, so Escape works.
 - **VII. Native Stack, Minimal Dependencies**: PASS. No new dependencies. Any unavoidable CF cast keeps the existing `asElement` type-checked helper (no new force casts).
 - **VIII. Verification Discipline**: PASS. The recovery is system-boundary code: no mock-based unit tests; verified by the manual acceptance procedure in quickstart.md, recorded in `docs/compatibility.md`. No new pure logic is introduced beyond trivial constants, so no new unit tests are required; existing tests must stay green.
 
@@ -71,7 +71,7 @@ today's fast, single-shot behavior. All parameters come from the recorded
      (VS Code, Claude desktop; axprobe findings 2026-07-31).
    - `AXUIElementSetMessagingTimeout(2.0)` on the app element and the
      system-wide element used by the retry loop.
-   - Retry loop: 12 attempts, 150 ms apart, `try Task.checkCancellation()`
+   - Retry loop: 24 attempts, 150 ms apart (raised from the findings' 12 after the 2026-08-02 cold-Teams acceptance run; see research.md Decision 3 amendment), `try Task.checkCancellation()`
      first in each iteration (same idiom as `TextWriter`'s modifier wait).
      Each attempt queries the app element's focused element first, then the
      system-wide focused element (findings: app element is the reliable path
