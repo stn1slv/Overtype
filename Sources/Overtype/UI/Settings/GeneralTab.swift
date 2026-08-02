@@ -12,57 +12,84 @@ public struct GeneralTab: View {
 
   public var body: some View {
     Form {
-      Section(header: Text("Startup")) {
-        Toggle(
-          "Launch at login",
-          isOn: Binding(
-            get: { launchManager.isEnabled },
-            set: { launchManager.setLaunchAtLogin(enabled: $0) }
+      // A Grid gives one shared, trailing-aligned label column across all these
+      // rows. SwiftUI Form auto-sizes label columns per Section, so labels in
+      // different sections (e.g. "Startup" vs "Speed Multiplier") never lined up.
+      Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 12) {
+        GridRow {
+          Text("Startup")
+            .gridColumnAlignment(.trailing)
+          Toggle(
+            "Launch at login",
+            isOn: Binding(
+              get: { launchManager.isEnabled },
+              set: { launchManager.setLaunchAtLogin(enabled: $0) }
+            )
           )
-        )
-        .toggleStyle(.checkbox)
+          .toggleStyle(.checkbox)
+        }
 
         if let errorMessage = launchManager.errorMessage {
-          Text(errorMessage)
-            .foregroundColor(.red)
-            .font(.caption)
+          GridRow {
+            Color.clear.frame(width: 0, height: 0)
+            Text(errorMessage)
+              .foregroundColor(.red)
+              .font(.caption)
+          }
         }
-      }
 
-      Section(header: Text("Global Typing Cadence")) {
-        HStack {
+        GridRow {
+          Text("Global Typing Cadence")
+            .font(.headline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
+            .gridCellColumns(2)
+        }
+
+        GridRow {
           Text("Speed Multiplier")
-          Slider(value: $viewModel.global.typingSpeedMultiplier, in: 0.1...10.0, step: 0.1)
-          Text("\(String(format: "%.1f", viewModel.global.typingSpeedMultiplier))x")
+          HStack {
+            Slider(value: $viewModel.global.typingSpeedMultiplier, in: 0.1...10.0, step: 0.1)
+            Text("\(String(format: "%.1f", viewModel.global.typingSpeedMultiplier))x")
+          }
         }
 
-        Toggle("Show HUD", isOn: $viewModel.global.showHUD)
-          .toggleStyle(.checkbox)
+        GridRow {
+          Color.clear.frame(width: 0, height: 0)
+          Toggle("Show HUD", isOn: $viewModel.global.showHUD)
+            .toggleStyle(.checkbox)
+        }
 
-        HStack {
+        GridRow {
           Text("Default Chunk Size")
-          TextField(
-            "Default",
-            value: Binding(
-              get: { viewModel.global.typingChunkSize ?? 0 },
-              set: { viewModel.global.typingChunkSize = $0 == 0 ? nil : $0 }
-            ), formatter: NumberFormatter(), prompt: Text("Standard")
-          )
-          .frame(width: 80)
-          .textFieldStyle(RoundedBorderTextFieldStyle())
+          HStack {
+            TextField(
+              "Default",
+              value: Binding(
+                get: { viewModel.global.typingChunkSize ?? 0 },
+                set: { viewModel.global.typingChunkSize = $0 == 0 ? nil : $0 }
+              ), formatter: NumberFormatter(), prompt: Text("Standard")
+            )
+            .frame(width: 80)
+            .textFieldStyle(RoundedBorderTextFieldStyle())
+            Spacer()
+          }
         }
 
-        HStack {
+        GridRow {
           Text("Default Delay (µs)")
-          TextField(
-            "Default",
-            value: Binding(
-              get: { viewModel.global.typingDelayMicroseconds ?? 0 },
-              set: { viewModel.global.typingDelayMicroseconds = $0 == 0 ? nil : $0 }
-            ), formatter: NumberFormatter(), prompt: Text("Standard")
-          )
-          .frame(width: 80)
-          .textFieldStyle(RoundedBorderTextFieldStyle())
+          HStack {
+            TextField(
+              "Default",
+              value: Binding(
+                get: { viewModel.global.typingDelayMicroseconds ?? 0 },
+                set: { viewModel.global.typingDelayMicroseconds = $0 == 0 ? nil : $0 }
+              ), formatter: NumberFormatter(), prompt: Text("Standard")
+            )
+            .frame(width: 80)
+            .textFieldStyle(RoundedBorderTextFieldStyle())
+            Spacer()
+          }
         }
       }
 
@@ -71,12 +98,27 @@ public struct GeneralTab: View {
           .font(.caption)
           .foregroundColor(.secondary)
 
+        // Column headers shown once. The per-row TextFields hide their own
+        // labels (.labelsHidden) so the fixed field widths are honored instead
+        // of collapsing to fit repeated inline labels.
+        if !viewModel.appOverridesList.isEmpty {
+          HStack {
+            Text("Bundle ID").frame(width: 200, alignment: .leading)
+            Text("Chunk").frame(width: 60, alignment: .leading)
+            Text("Delay (µs)").frame(width: 80, alignment: .leading)
+            Spacer()
+          }
+          .font(.caption)
+          .foregroundColor(.secondary)
+        }
+
         ForEach(viewModel.appOverridesList.indices, id: \.self) { index in
           HStack {
             TextField(
               "Bundle ID", text: $viewModel.appOverridesList[index].bundleID,
               prompt: Text("e.g. com.apple.Safari")
             )
+            .labelsHidden()
             .textFieldStyle(RoundedBorderTextFieldStyle())
             .frame(width: 200)
 
@@ -87,6 +129,7 @@ public struct GeneralTab: View {
                 set: { viewModel.appOverridesList[index].chunkSize = $0 == 0 ? nil : $0 }
               ), formatter: NumberFormatter(), prompt: Text("Default")
             )
+            .labelsHidden()
             .textFieldStyle(RoundedBorderTextFieldStyle())
             .frame(width: 60)
 
@@ -97,6 +140,7 @@ public struct GeneralTab: View {
                 set: { viewModel.appOverridesList[index].delay = $0 == 0 ? nil : $0 }
               ), formatter: NumberFormatter(), prompt: Text("Default")
             )
+            .labelsHidden()
             .textFieldStyle(RoundedBorderTextFieldStyle())
             .frame(width: 80)
 
@@ -107,6 +151,8 @@ public struct GeneralTab: View {
             }
             .buttonStyle(BorderlessButtonStyle())
             .foregroundColor(.red)
+
+            Spacer()
           }
         }
 

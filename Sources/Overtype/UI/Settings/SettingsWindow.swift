@@ -23,7 +23,7 @@ public struct SettingsWindow: View {
         }
     }
     .padding()
-    .frame(width: 550, height: 450)
+    .frame(width: 640, height: 520)
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       viewModel.reloadFromDisk()
     }
