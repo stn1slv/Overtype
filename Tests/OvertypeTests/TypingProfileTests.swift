@@ -53,4 +53,14 @@ final class TypingProfileTests: XCTestCase {
         // chunkSize comes from the override; the missing delay falls back to global.
         XCTAssertEqual(profile, TextWriter.TypingProfile(chunkSize: 1, delayMicroseconds: 5000))
     }
+
+    func testPartialOverrideWithNilGlobalFallsBackToBuiltInDefaults() {
+        let settings = GeneralConfig(
+            typingChunkSize: nil, typingDelayMicroseconds: nil,
+            appTypingOverrides: [outlook: AppTypingOverride(typingChunkSize: 1, typingDelayMicroseconds: nil)]
+        )
+        let profile = TextWriter.typingProfile(bundleID: outlook, settings: settings)
+        // chunkSize from the override; delay falls through nil global to the built-in 2000.
+        XCTAssertEqual(profile, TextWriter.TypingProfile(chunkSize: 1, delayMicroseconds: 2000))
+    }
 }
