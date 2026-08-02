@@ -116,11 +116,13 @@ public class TextWriter: TextWriting {
         Logger.shared.log(String(format: "Typing performance - chars: %d, chunks: %d, elapsed: %.1fms, avg/chunk: %.2fms", totalChars, chunkCount, elapsedMs, avgPerChunk), level: .info)
     }
     
-    /// Splits a UTF-16 buffer into chunks of at most `chunkSize` units without ever
-    /// splitting a surrogate pair across a boundary. A non-BMP character (emoji, some
-    /// CJK) is encoded as a high+low surrogate pair; delivering an unpaired surrogate
-    /// to `keyboardSetUnicodeString` produces a broken/replacement character. Pure
-    /// logic, unit-tested.
+    /// Splits a UTF-16 buffer into chunks that target `chunkSize` units each, without
+    /// ever splitting a surrogate pair across a boundary. A chunk may therefore be one
+    /// unit longer than `chunkSize` when the boundary would otherwise fall between a
+    /// high and low surrogate. A non-BMP character (emoji, some CJK) is encoded as a
+    /// high+low surrogate pair; delivering an unpaired surrogate to
+    /// `keyboardSetUnicodeString` produces a broken/replacement character. Pure logic,
+    /// unit-tested.
     static func chunkRanges(for utf16: [UInt16], chunkSize: Int) -> [Range<Int>] {
         let total = utf16.count
         guard total > 0 else { return [] }
