@@ -112,10 +112,10 @@ public struct GeneralTab: View {
           .foregroundColor(.secondary)
         }
 
-        ForEach(viewModel.appOverridesList.indices, id: \.self) { index in
+        ForEach($viewModel.appOverridesList) { $draft in
           HStack {
             TextField(
-              "Bundle ID", text: $viewModel.appOverridesList[index].bundleID,
+              "Bundle ID", text: $draft.bundleID,
               prompt: Text("e.g. com.apple.Safari")
             )
             .labelsHidden()
@@ -125,8 +125,8 @@ public struct GeneralTab: View {
             TextField(
               "Chunk",
               value: Binding(
-                get: { viewModel.appOverridesList[index].chunkSize ?? 0 },
-                set: { viewModel.appOverridesList[index].chunkSize = $0 == 0 ? nil : $0 }
+                get: { $draft.chunkSize.wrappedValue ?? 0 },
+                set: { $draft.chunkSize.wrappedValue = $0 == 0 ? nil : $0 }
               ), formatter: NumberFormatter(), prompt: Text("Default")
             )
             .labelsHidden()
@@ -136,8 +136,8 @@ public struct GeneralTab: View {
             TextField(
               "Delay (µs)",
               value: Binding(
-                get: { viewModel.appOverridesList[index].delay ?? 0 },
-                set: { viewModel.appOverridesList[index].delay = $0 == 0 ? nil : $0 }
+                get: { $draft.delay.wrappedValue ?? 0 },
+                set: { $draft.delay.wrappedValue = $0 == 0 ? nil : $0 }
               ), formatter: NumberFormatter(), prompt: Text("Default")
             )
             .labelsHidden()
@@ -145,7 +145,7 @@ public struct GeneralTab: View {
             .frame(width: 80)
 
             Button(action: {
-              viewModel.appOverridesList.remove(at: index)
+              viewModel.appOverridesList.removeAll { $0.id == draft.id }
             }) {
               Image(systemName: "trash")
             }

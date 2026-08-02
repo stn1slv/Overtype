@@ -2,12 +2,16 @@ import Combine
 import Foundation
 
 public struct AppOverrideDraft: Identifiable, Equatable {
-  public var id: String { bundleID }
+  // Stable identity independent of bundleID: new rows start with an empty,
+  // non-unique bundleID, so using bundleID as the id would break SwiftUI's
+  // ForEach diffing and could crash on delete.
+  public let id: UUID
   public var bundleID: String
   public var chunkSize: Int?
   public var delay: Int?
 
-  public init(bundleID: String, chunkSize: Int?, delay: Int?) {
+  public init(id: UUID = UUID(), bundleID: String, chunkSize: Int?, delay: Int?) {
+    self.id = id
     self.bundleID = bundleID
     self.chunkSize = chunkSize
     self.delay = delay
