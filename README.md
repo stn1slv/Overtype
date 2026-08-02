@@ -37,9 +37,9 @@ brew install stn1slv/tap/overtype
 2. **API Key Setup**:
    Click the **Overtype** menu bar icon (the quotation mark), open **Settings**, and paste your OpenAI API key. This key is stored securely in your macOS Keychain and is *never* written to plaintext config files. For detailed step-by-step instructions, see our [OpenAI Setup Guide](docs/openai-setup.md).
 
-## Configuration file
+## Configuration Settings
 
-You can manage your actions, hotkeys, and AI templates via the JSON configuration file stored at `~/Library/Application Support/Overtype/config.json`.
+You can manage all your preferences, providers, actions, and global hotkeys directly from the in-app **Settings** window (available via the menu bar icon). Any changes made in the GUI are automatically validated and written back to the configuration file stored at `~/Library/Application Support/Overtype/config.json`. Advanced users can still view or migrate this file manually.
 
 ```json
 {
