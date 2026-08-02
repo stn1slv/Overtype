@@ -4,7 +4,6 @@ set -e
 APP_NAME="Overtype"
 APP_BUNDLE="$APP_NAME.app"
 BIN_DIR=".build/release"
-RESOURCES_DIR="$BIN_DIR/${APP_NAME}_${APP_NAME}.bundle"
 
 echo "Building executable..."
 swift build -c release
@@ -26,11 +25,18 @@ else
     echo "Warning: Info.plist not found in Sources/Overtype/Resources/"
 fi
 
-# Copy any bundle resources if they exist
-if [ -d "$RESOURCES_DIR" ]; then
-    echo "Copying resources..."
-    cp -R "$RESOURCES_DIR/"* "$APP_BUNDLE/Contents/Resources/"
-fi
+# Copy every SwiftPM resource bundle (our own and dependencies') next to the
+# executable. KeyboardShortcuts crashes on first use of its Recorder view
+# because Bundle.module hard-fails when KeyboardShortcuts_KeyboardShortcuts.bundle
+# is missing, so all *.bundle directories must ship inside the app.
+shopt -s nullglob
+for bundle in "$BIN_DIR"/*.bundle; do
+    dest="$APP_BUNDLE/Contents/Resources/$(basename "$bundle")"
+    echo "Copying resource bundle $(basename "$bundle")..."
+    rm -rf "$dest"
+    cp -R "$bundle" "$dest"
+done
+shopt -u nullglob
 
 echo "Codesigning (ad-hoc)..."
 codesign --force --deep --sign - -i com.github.stn1slv.Overtype "$APP_BUNDLE"
