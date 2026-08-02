@@ -59,11 +59,19 @@ public class TextWriter: TextWriting {
     }
 
     /// Scales the base per-chunk delay by the speed multiplier. A non-positive
-    /// multiplier from config is treated as the neutral 1.0, because dividing by 0
-    /// yields an infinite Double and `Int(infinity)` traps. Pure logic, unit-tested.
+    /// multiplier from config is treated as the neutral 1.0. The scaled result is
+    /// clamped to `[0, 1_000_000]` microseconds before the `Int()` conversion: a tiny
+    /// positive multiplier (or an oversized base delay) can push the value past
+    /// `Int.max` or to infinity, which would trap; and no per-chunk delay ever needs to
+    /// exceed one second. Pure logic, unit-tested.
     static func effectiveDelayMicroseconds(base: Int, speedMultiplier: Double) -> Int {
+        let maxDelayMicroseconds = 1_000_000.0
         let effectiveMultiplier = speedMultiplier > 0 ? speedMultiplier : 1.0
-        return Int(Double(base) / effectiveMultiplier)
+        let scaled = Double(base) / effectiveMultiplier
+
+        if !scaled.isFinite { return Int(maxDelayMicroseconds) }
+        if scaled <= 0 { return 0 }
+        return Int(min(scaled, maxDelayMicroseconds))
     }
 
     private func writeViaCGEvent(text: String,

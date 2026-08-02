@@ -76,4 +76,19 @@ final class TypingProfileTests: XCTestCase {
         XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 0.0), 2000)
         XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: -3.0), 2000)
     }
+
+    func testEffectiveDelayIsCappedAtOneSecond() {
+        // A small positive multiplier scales the delay above the 1-second cap.
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 0.001), 1_000_000)
+    }
+
+    func testEffectiveDelayDoesNotTrapOnTinyPositiveMultiplier() {
+        // Without clamping, base / 1e-300 exceeds Int.max and Int() traps. It must
+        // instead clamp to the 1-second cap.
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 1e-300), 1_000_000)
+    }
+
+    func testEffectiveDelayFloorsNegativeBaseAtZero() {
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: -5000, speedMultiplier: 1.0), 0)
+    }
 }
