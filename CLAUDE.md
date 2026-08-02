@@ -59,17 +59,21 @@ app's selection.
 `Support/Logger.swift` (`Logger.shared`) wraps `os_log` with an `isDebugEnabled`
 gate and `sanitizedLog()`, which redacts selected text and model output unless
 debug logging is on. `UI/Settings/SettingsWindow.swift` is the SwiftUI settings
-window: today only the General tab is functional (OpenAI API-key entry to the
-Keychain and an "Open config.json" button), while the Actions and Providers tabs
-are placeholders marked "Coming Soon".
+window: all three tabs are functional (as of specs/003-gui-settings). The
+General tab manages global preferences (Launch at Login, HUD, typing cadence,
+per-app typing overrides); the Providers tab adds/edits/deletes providers and
+stores their API keys in the Keychain; the Actions tab adds/edits/deletes actions
+and records global hotkeys via an interactive recorder with conflict detection.
+A `SettingsViewModel` handles draft state, slug-based id generation, and atomic
+saves through `ConfigStore`.
 
 ### Configuration and extension model
 
 - `Config/AppConfig.swift` defines the `Codable` config model; `Config/ConfigStore.swift` loads/persists `~/Library/Application Support/Overtype/config.json`; `Config/DefaultConfig.swift` holds the effective default as an inline JSON string and seeds it on first launch. Note: `Support/Overtype/config.json` is a stale sample, not the packaged default. It is not declared as a package resource in `Package.swift`, is never loaded, and no longer matches the model (it uses `type` instead of `kind` and omits required fields, so it would fail to decode). Treat `DefaultConfig.swift` as the source of truth.
 - Config has three parts: `global` (typing speed/HUD), `providers` (id, kind, baseURL, defaultModel, keychainKey), and `actions` (title, shortcut, providerID, optional model, systemPrompt, userPromptTemplate, temperature, limits, writeStrategy).
 - Model resolution order: action-level `model`, then provider `defaultModel`.
-- **Adding an automation requires no Swift code**: it is a declarative action record in config. Today actions are added by editing `config.json` directly; the in-app Actions editor in Settings is not yet implemented.
-- **Adding an AI provider** requires exactly three edits: a new case in the provider-kind enum, a new type conforming to `AIProvider`, and one line in `Providers/ProviderRegistry.swift`. `anthropic` and `ollama` are enum cases with stubbed (not yet implemented) branches there.
+- **Adding an automation requires no Swift code**: it is a declarative action record in config. Actions can be added either by editing `config.json` directly or through the in-app Actions editor in Settings (implemented in specs/003-gui-settings).
+- **Adding an AI provider** requires exactly three edits: a new case in the provider-kind enum, a new type conforming to `AIProvider`, and one line in `Providers/ProviderRegistry.swift`. `openai` (`OpenAICompatibleProvider`) and `gemini` (`GeminiProvider`, native `generateContent` API) are implemented; `anthropic` and `ollama` are enum cases with stubbed (not yet implemented) branches there. `GeminiProvider` reads its key from the Keychain and sends it in the `x-goog-api-key` header (never in the URL), and maps Gemini safety-blocks/empty candidates to the typed errors `ProviderError.responseBlocked(reason:)` / `.emptyResponse`. [Source: specs/004-gemini-provider]
 - API keys live only in the macOS Keychain (`Security/KeychainStore.swift`), referenced by `keychainKey`; they are never written to config, UserDefaults, logs, or the UI.
 
 ## Non-negotiable constraints
