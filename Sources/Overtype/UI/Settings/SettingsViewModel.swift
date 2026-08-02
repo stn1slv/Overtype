@@ -29,11 +29,8 @@ public final class SettingsViewModel: ObservableObject {
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    self.appOverridesList = (config.global.appTypingOverrides ?? [:]).map {
-      AppOverrideDraft(
-        bundleID: $0.key, chunkSize: $0.value.typingChunkSize,
-        delay: $0.value.typingDelayMicroseconds)
-    }.sorted { $0.bundleID < $1.bundleID }
+    self.appOverridesList = SettingsViewModel.buildOverridesList(
+      from: config, preservingIDsFrom: [])
   }
 
   public func reloadFromDisk() {
@@ -41,10 +38,26 @@ public final class SettingsViewModel: ObservableObject {
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    self.appOverridesList = (config.global.appTypingOverrides ?? [:]).map {
+    // Preserve each row's id across reloads (reloadFromDisk runs on every window
+    // refocus). Minting new UUIDs here would churn ForEach identity and drop the
+    // focused TextField's cursor. Bundle IDs are unique dictionary keys on disk.
+    self.appOverridesList = SettingsViewModel.buildOverridesList(
+      from: config, preservingIDsFrom: self.appOverridesList)
+  }
+
+  private static func buildOverridesList(
+    from config: AppConfig, preservingIDsFrom existing: [AppOverrideDraft]
+  ) -> [AppOverrideDraft] {
+    var idByBundleID: [String: UUID] = [:]
+    for draft in existing where idByBundleID[draft.bundleID] == nil {
+      idByBundleID[draft.bundleID] = draft.id
+    }
+    return (config.global.appTypingOverrides ?? [:]).map { key, value in
       AppOverrideDraft(
-        bundleID: $0.key, chunkSize: $0.value.typingChunkSize,
-        delay: $0.value.typingDelayMicroseconds)
+        id: idByBundleID[key] ?? UUID(),
+        bundleID: key,
+        chunkSize: value.typingChunkSize,
+        delay: value.typingDelayMicroseconds)
     }.sorted { $0.bundleID < $1.bundleID }
   }
 

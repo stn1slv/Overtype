@@ -26,8 +26,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // duplicate global hotkeys that fight each other, so if another instance is
     // already running we quit before creating the status item or any hotkeys.
     if let bundleID = Bundle.main.bundleIdentifier {
+      let ownPID = getpid()
       let hasOtherInstance = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        .contains { $0 != NSRunningApplication.current }
+        .contains { $0.processIdentifier != ownPID }
       if hasOtherInstance {
         Logger.shared.log(
           "Another Overtype instance is already running; exiting this one.", level: .info)
