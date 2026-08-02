@@ -134,6 +134,11 @@ public class GeminiProvider: AIProvider {
       throw ProviderError.responseBlocked(reason: finishReason)
     }
 
+    // A MAX_TOKENS finish with non-empty text is deliberately treated as a
+    // success: the partial (possibly truncated) output is sanitized and written
+    // like any other result, matching OpenAICompatibleProvider's behavior. No
+    // maxOutputTokens is sent, so this only occurs at the model's own default
+    // cap. If the truncated text is empty it falls through to .emptyResponse.
     let text = extractText(from: firstCandidate)
     if text.isEmpty {
       throw ProviderError.emptyResponse

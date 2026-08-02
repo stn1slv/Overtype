@@ -55,9 +55,9 @@ public enum ProviderError: Error, LocalizedError {
     case .contextChanged:
       return "The selection or active app changed before writing, so nothing was changed."
     case .responseBlocked(let reason):
-      return "Gemini blocked the response (reason: \(reason)). Nothing was changed."
+      return "The AI provider blocked the response (reason: \(reason)). Nothing was changed."
     case .emptyResponse:
-      return "Gemini returned no text to write. Nothing was changed."
+      return "The AI provider returned no text to write. Nothing was changed."
     }
   }
 }
