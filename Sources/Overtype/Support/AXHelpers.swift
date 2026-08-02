@@ -27,65 +27,105 @@ public class AXHelpers {
         }
         
         let appElement = AXUIElementCreateApplication(app.processIdentifier)
-        
+
+        // Strategies 2-4 may return a focused element that is not the actual text
+        // element (no live selection), which previously short-circuited the DFS
+        // fallback below and made reading fail on apps where a descendant holds the
+        // selection. We now only return a strategy result immediately when it has a
+        // non-empty selection; otherwise we remember it and keep looking (DFS), then
+        // fall back to it so the user still gets a specific "cannot read" error.
+        var fallbackCandidate: AXUIElement?
+
         // 1. Try System-Wide Focused Element
         let systemWideElement = AXUIElementCreateSystemWide()
         var focusedElementValue: CFTypeRef?
         var error = AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
-        
-        if error == .success, let element = focusedElementValue {
+
+        if error == .success, let element = asElement(focusedElementValue) {
             var pid: pid_t = 0
-            AXUIElementGetPid(element as! AXUIElement, &pid)
+            AXUIElementGetPid(element, &pid)
             if pid == app.processIdentifier {
-                return element as! AXUIElement
+                if elementHasSelectedText(element) { return element }
+                if fallbackCandidate == nil { fallbackCandidate = element }
             }
         }
-        
+
         // 2. Try App-Level Focused Element
         error = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
-        
-        if error == .success, let element = focusedElementValue {
-            return element as! AXUIElement
+
+        if error == .success, let element = asElement(focusedElementValue) {
+            if elementHasSelectedText(element) { return element }
+            if fallbackCandidate == nil { fallbackCandidate = element }
         }
-        
+
         // 3. Try the focused window
         var focusedWindowValue: CFTypeRef?
         if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue) == .success,
-           let focusedWindow = focusedWindowValue {
-            error = AXUIElementCopyAttributeValue(focusedWindow as! AXUIElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
-            if error == .success, let element = focusedElementValue {
-                return element as! AXUIElement
+           let focusedWindow = asElement(focusedWindowValue) {
+            error = AXUIElementCopyAttributeValue(focusedWindow, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+            if error == .success, let element = asElement(focusedElementValue) {
+                if elementHasSelectedText(element) { return element }
+                if fallbackCandidate == nil { fallbackCandidate = element }
             }
         }
-        
+
         // 4. Try the main window
         var mainWindowValue: CFTypeRef?
         if AXUIElementCopyAttributeValue(appElement, kAXMainWindowAttribute as CFString, &mainWindowValue) == .success,
-           let mainWindow = mainWindowValue {
-            error = AXUIElementCopyAttributeValue(mainWindow as! AXUIElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
-            if error == .success, let element = focusedElementValue {
-                return element as! AXUIElement
+           let mainWindow = asElement(mainWindowValue) {
+            error = AXUIElementCopyAttributeValue(mainWindow, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
+            if error == .success, let element = asElement(focusedElementValue) {
+                if elementHasSelectedText(element) { return element }
+                if fallbackCandidate == nil { fallbackCandidate = element }
             }
         }
-        
+
         // 5. Ultimate Fallback: DFS for an element with selected text inside the focused/main window.
         // QUIRK WORKAROUND: Microsoft Outlook (New Outlook) and other Electron/React Native-based apps
         // fail to propagate kAXFocusedUIElementAttribute to the app or window element.
         // We recursively crawl the accessibility tree to find the element that has active selection.
         var visitedCount = 0
-        if let window = focusedWindowValue {
-            if let found = findActiveTextElement(in: window as! AXUIElement, visitedCount: &visitedCount) {
+        if let window = asElement(focusedWindowValue) {
+            if let found = findActiveTextElement(in: window, visitedCount: &visitedCount) {
                 return found
             }
         }
-        
-        if let window = mainWindowValue {
-            if let found = findActiveTextElement(in: window as! AXUIElement, visitedCount: &visitedCount) {
+
+        if let window = asElement(mainWindowValue) {
+            if let found = findActiveTextElement(in: window, visitedCount: &visitedCount) {
                 return found
             }
         }
-        
+
+        // No element reported a live selection. Return the best focused candidate so
+        // the caller surfaces "cannot read selected text" rather than "no element".
+        if let fallbackCandidate = fallbackCandidate {
+            return fallbackCandidate
+        }
+
         throw AXError.noFocusedElement
+    }
+
+    /// Safely narrows an Accessibility attribute value (typed as `CFTypeRef` by the
+    /// SDK) to an `AXUIElement`. Third-party apps can return `kCFNull` or an
+    /// unexpected type; a forced cast would crash Overtype, so we verify the
+    /// CoreFoundation type ID first and return nil otherwise, letting the caller fall
+    /// through to the next strategy.
+    private static func asElement(_ value: CFTypeRef?) -> AXUIElement? {
+        guard let value = value else { return nil }
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        // Safe: the CoreFoundation type ID was verified immediately above.
+        return (value as! AXUIElement)
+    }
+
+    /// True if the element currently exposes a non-empty `kAXSelectedText`.
+    private static func elementHasSelectedText(_ element: AXUIElement) -> Bool {
+        var selectedTextValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedTextValue) == .success,
+              let text = selectedTextValue as? String else {
+            return false
+        }
+        return !text.isEmpty
     }
     
     private static func findActiveTextElement(in element: AXUIElement, depth: Int = 0, visitedCount: inout Int) -> AXUIElement? {

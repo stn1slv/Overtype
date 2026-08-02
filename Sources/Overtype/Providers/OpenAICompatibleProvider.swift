@@ -55,7 +55,10 @@ public class OpenAICompatibleProvider: AIProvider {
         }
         
         if httpResponse.statusCode != 200 {
-            throw ProviderError.apiError(statusCode: httpResponse.statusCode, message: "Server returned error code")
+            // Surface the server's error message so distinct failures (401 bad key,
+            // 429 rate limit, 500) are distinguishable instead of a generic string.
+            throw ProviderError.apiError(statusCode: httpResponse.statusCode,
+                                         message: Self.extractErrorMessage(from: data))
         }
         
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -67,5 +70,27 @@ public class OpenAICompatibleProvider: AIProvider {
         }
         
         return content
+    }
+
+    /// Best-effort extraction of an OpenAI-style `{ "error": { "message": ... } }`
+    /// body, falling back to a truncated raw body. Pure logic, unit-tested.
+    static func extractErrorMessage(from data: Data) -> String {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let error = json["error"] as? [String: Any],
+           let message = error["message"] as? String,
+           !message.isEmpty {
+            return message
+        }
+
+        guard let raw = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else {
+            return "Server returned an error with no readable body."
+        }
+
+        let maxLength = 200
+        if raw.count > maxLength {
+            return String(raw.prefix(maxLength)) + "…"
+        }
+        return raw
     }
 }

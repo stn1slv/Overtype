@@ -6,15 +6,13 @@ public struct TransformRequest {
     public let userPromptTemplate: String
     public let model: String
     public let temperature: Double
-    public let timeoutSeconds: Double
-    
-    public init(text: String, systemPrompt: String, userPromptTemplate: String, model: String, temperature: Double, timeoutSeconds: Double) {
+
+    public init(text: String, systemPrompt: String, userPromptTemplate: String, model: String, temperature: Double) {
         self.text = text
         self.systemPrompt = systemPrompt
         self.userPromptTemplate = userPromptTemplate
         self.model = model
         self.temperature = temperature
-        self.timeoutSeconds = timeoutSeconds
     }
 }
 

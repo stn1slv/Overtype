@@ -6,7 +6,6 @@ public struct DefaultConfig {
         """
         {
           "global": {
-            "typingDelayMs": 150,
             "typingSpeedMultiplier": 1.0,
             "showHUD": true
           },
@@ -43,5 +42,11 @@ public struct DefaultConfig {
     public static var defaultConfig: AppConfig? {
         guard let data = defaultConfigJSON.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(AppConfig.self, from: data)
+    }
+
+    /// Non-optional last resort used if the embedded JSON ever fails to decode, so the
+    /// app still launches (with no actions) instead of crashing on a force-unwrap.
+    public static var fallbackConfig: AppConfig {
+        AppConfig(global: GeneralConfig(), providers: [], actions: [])
     }
 }
