@@ -22,6 +22,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   let hotkeyManager = HotkeyManager()
 
   func applicationDidFinishLaunching(_ aNotification: Notification) {
+    // Enforce a single running instance. A second menu-bar copy would register
+    // duplicate global hotkeys that fight each other, so if another instance is
+    // already running we quit before creating the status item or any hotkeys.
+    if let bundleID = Bundle.main.bundleIdentifier {
+      let hasOtherInstance = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        .contains { $0 != NSRunningApplication.current }
+      if hasOtherInstance {
+        Logger.shared.log(
+          "Another Overtype instance is already running; exiting this one.", level: .info)
+        NSApp.terminate(nil)
+        return
+      }
+    }
+
     Logger.shared.log("Overtype starting up...", level: .info)
 
     // Ensure accessibility permissions are granted
