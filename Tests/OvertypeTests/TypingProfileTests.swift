@@ -63,4 +63,17 @@ final class TypingProfileTests: XCTestCase {
         // chunkSize from the override; delay falls through nil global to the built-in 2000.
         XCTAssertEqual(profile, TextWriter.TypingProfile(chunkSize: 1, delayMicroseconds: 2000))
     }
+
+    func testEffectiveDelayScalesWithMultiplier() {
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 1.0), 2000)
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 2.0), 1000)
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 0.5), 4000)
+    }
+
+    func testEffectiveDelayGuardsNonPositiveMultiplier() {
+        // A zero or negative multiplier must not trap (division by zero -> Int(inf)).
+        // It is treated as the neutral 1.0, returning the base delay unchanged.
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: 0.0), 2000)
+        XCTAssertEqual(TextWriter.effectiveDelayMicroseconds(base: 2000, speedMultiplier: -3.0), 2000)
+    }
 }

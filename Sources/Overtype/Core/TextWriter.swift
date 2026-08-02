@@ -58,6 +58,14 @@ public class TextWriter: TextWriting {
         return TypingProfile(chunkSize: globalChunk, delayMicroseconds: globalDelay)
     }
 
+    /// Scales the base per-chunk delay by the speed multiplier. A non-positive
+    /// multiplier from config is treated as the neutral 1.0, because dividing by 0
+    /// yields an infinite Double and `Int(infinity)` traps. Pure logic, unit-tested.
+    static func effectiveDelayMicroseconds(base: Int, speedMultiplier: Double) -> Int {
+        let effectiveMultiplier = speedMultiplier > 0 ? speedMultiplier : 1.0
+        return Int(Double(base) / effectiveMultiplier)
+    }
+
     private func writeViaCGEvent(text: String,
                                  profile: TypingProfile,
                                  speedMultiplier: Double,
@@ -110,8 +118,7 @@ public class TextWriter: TextWriting {
         Thread.sleep(forTimeInterval: 0.05)
         
         let chunkSize = profile.chunkSize
-        let baseDelayUs = profile.delayMicroseconds
-        let delayUs = Int(Double(baseDelayUs) / speedMultiplier)
+        let delayUs = Self.effectiveDelayMicroseconds(base: profile.delayMicroseconds, speedMultiplier: speedMultiplier)
 
         Logger.shared.log("Effective typing config - bundleID: \(bundleID ?? "unknown"), chunkSize: \(chunkSize), delayUS: \(delayUs)", level: .info)
         
