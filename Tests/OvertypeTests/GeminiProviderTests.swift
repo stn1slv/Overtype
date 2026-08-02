@@ -55,6 +55,18 @@ final class GeminiProviderTests: XCTestCase {
     }
   }
 
+  func testNonSafetyBlockFinishReasonMapsToResponseBlocked() {
+    // A candidate that stopped for RECITATION (not SAFETY) and carries no text
+    // must be reported as blocked with its reason, not as an empty response.
+    let body = #"{"candidates":[{"content":{"parts":[]},"finishReason":"RECITATION"}]}"#
+    assertParseThrows(body) { error in
+      guard case ProviderError.responseBlocked(let reason) = error else {
+        return XCTFail("expected responseBlocked, got \(error)")
+      }
+      XCTAssertEqual(reason, "RECITATION")
+    }
+  }
+
   func testNoCandidatesMapsToResponseBlocked() {
     let body = #"{"candidates":[]}"#
     assertParseThrows(body) { error in

@@ -59,6 +59,10 @@ public class GeminiProvider: AIProvider {
     let response: URLResponse
     do {
       (data, response) = try await urlSession.data(for: urlRequest)
+    } catch is CancellationError {
+      // Escape/Task cancellation before the request resolves surfaces as a
+      // structured-concurrency CancellationError; map it to the clean no-op.
+      throw ProviderError.cancelled
     } catch let error as URLError {
       // Distinguish timeout/cancellation from other transport failures (FR-006).
       switch error.code {
@@ -120,8 +124,13 @@ public class GeminiProvider: AIProvider {
       throw ProviderError.responseBlocked(reason: "no candidates returned")
     }
 
-    // Candidate-level safety stop.
-    if let finishReason = firstCandidate["finishReason"] as? String, finishReason == "SAFETY" {
+    // Candidate-level block: any finish reason other than a normal completion
+    // (STOP / MAX_TOKENS) means the model stopped for a reason like SAFETY,
+    // RECITATION, BLOCKLIST, or PROHIBITED_CONTENT. Treat all of them as blocked
+    // so the reason is reported specifically (FR-006), not as a bare empty result.
+    if let finishReason = firstCandidate["finishReason"] as? String,
+      finishReason != "STOP", finishReason != "MAX_TOKENS"
+    {
       throw ProviderError.responseBlocked(reason: finishReason)
     }
 
