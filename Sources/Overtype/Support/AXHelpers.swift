@@ -201,7 +201,10 @@ public class AXHelpers {
         }
       }
 
-      Thread.sleep(forTimeInterval: recoveryIntervalSeconds)
+      // No sleep after the last attempt; it would only delay the failure.
+      if attempt < recoveryAttempts {
+        Thread.sleep(forTimeInterval: recoveryIntervalSeconds)
+      }
     }
 
     Logger.shared.log(
