@@ -1,17 +1,31 @@
 import Cocoa
-import SwiftUI
 
 public class PermissionManager {
+    private static let promptedKey = "overtype-has-prompted-accessibility"
+    
+    @discardableResult
     public static func checkAndPrompt() -> Bool {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-        let isTrusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        // 1. Check silently first
+        let isTrusted = AXIsProcessTrusted()
         
-        if !isTrusted {
-            Logger.shared.log("Accessibility permissions not granted. System prompt should appear.", level: .warning)
+        if isTrusted {
+            return true
+        }
+        
+        Logger.shared.log("Accessibility permissions not granted.", level: .warning)
+        
+        let hasPrompted = UserDefaults.standard.bool(forKey: promptedKey)
+        if !hasPrompted {
+            // First launch: Trigger native macOS prompt only (no custom instructions dialog)
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+            _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
+            UserDefaults.standard.set(true, forKey: promptedKey)
+        } else {
+            // Subsequent launches: Show custom instructions dialog since native prompt won't show again
             showPermissionInstructions()
         }
         
-        return isTrusted
+        return false
     }
     
     private static func showPermissionInstructions() {
