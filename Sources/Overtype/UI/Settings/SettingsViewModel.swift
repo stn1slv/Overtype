@@ -2,12 +2,16 @@ import Combine
 import Foundation
 
 public struct AppOverrideDraft: Identifiable, Equatable {
-  public var id: String { bundleID }
+  // Stable identity independent of bundleID: new rows start with an empty,
+  // non-unique bundleID, so using bundleID as the id would break SwiftUI's
+  // ForEach diffing and could crash on delete.
+  public let id: UUID
   public var bundleID: String
   public var chunkSize: Int?
   public var delay: Int?
 
-  public init(bundleID: String, chunkSize: Int?, delay: Int?) {
+  public init(id: UUID = UUID(), bundleID: String, chunkSize: Int?, delay: Int?) {
+    self.id = id
     self.bundleID = bundleID
     self.chunkSize = chunkSize
     self.delay = delay
@@ -25,22 +29,52 @@ public final class SettingsViewModel: ObservableObject {
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    self.appOverridesList = (config.global.appTypingOverrides ?? [:]).map {
-      AppOverrideDraft(
-        bundleID: $0.key, chunkSize: $0.value.typingChunkSize,
-        delay: $0.value.typingDelayMicroseconds)
-    }.sorted { $0.bundleID < $1.bundleID }
+    self.appOverridesList = SettingsViewModel.buildOverridesList(
+      from: config, preservingIDsFrom: [])
   }
 
   public func reloadFromDisk() {
     let config = ConfigStore.shared.config
+    let storeOverrides = SettingsViewModel.buildOverridesList(
+      from: config, preservingIDsFrom: appOverridesList)
+    // This runs on every settings-window refocus. Skip the resync when the user
+    // has unsaved in-memory edits, otherwise a half-entered row or unsaved change
+    // would be silently discarded when focus briefly leaves and returns.
+    //
+    // Overrides are compared via the draft list, which catches in-progress rows
+    // (including a newly added one whose bundleID is still empty). The rest of
+    // the config is compared with appTypingOverrides neutralized on both sides:
+    // the draft list already covers overrides, and comparing them here would
+    // misread a clean state as edited whenever the stored config represents no
+    // overrides as an empty dictionary while the model normalizes it to nil.
+    var inMemoryGlobal = global
+    var storeGlobal = config.global
+    inMemoryGlobal.appTypingOverrides = nil
+    storeGlobal.appTypingOverrides = nil
+    guard appOverridesList == storeOverrides,
+      inMemoryGlobal == storeGlobal,
+      providers == config.providers,
+      actions == config.actions
+    else { return }
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    self.appOverridesList = (config.global.appTypingOverrides ?? [:]).map {
+    self.appOverridesList = storeOverrides
+  }
+
+  private static func buildOverridesList(
+    from config: AppConfig, preservingIDsFrom existing: [AppOverrideDraft]
+  ) -> [AppOverrideDraft] {
+    var idByBundleID: [String: UUID] = [:]
+    for draft in existing where idByBundleID[draft.bundleID] == nil {
+      idByBundleID[draft.bundleID] = draft.id
+    }
+    return (config.global.appTypingOverrides ?? [:]).map { key, value in
       AppOverrideDraft(
-        bundleID: $0.key, chunkSize: $0.value.typingChunkSize,
-        delay: $0.value.typingDelayMicroseconds)
+        id: idByBundleID[key] ?? UUID(),
+        bundleID: key,
+        chunkSize: value.typingChunkSize,
+        delay: value.typingDelayMicroseconds)
     }.sorted { $0.bundleID < $1.bundleID }
   }
 
