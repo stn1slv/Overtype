@@ -240,17 +240,8 @@ public struct ActionsTab: View {
     do {
       let existingId = editingAction?.id
 
-      // If creating, we need to generate slug to copy the temp shortcut over
-      let finalID: String
-      if let existing = existingId {
-        finalID = existing
-      } else {
-        let existingIDs = viewModel.actions.map { $0.id }
-        finalID = viewModel.uniqueSlug(for: title, existingIDs: existingIDs)
-      }
-
-      // Save the action via view model
-      try viewModel.saveAction(
+      // Save the action via view model and get assigned action ID
+      let finalID = try viewModel.saveAction(
         id: existingId,
         title: title,
         enabled: enabled,

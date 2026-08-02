@@ -47,11 +47,21 @@ public final class SettingsViewModel: ObservableObject {
   public func saveSettings() throws {
     // Map draft overrides list back to dictionary
     var overridesDict: [String: AppTypingOverride] = [:]
+    var seenBundleIDs = Set<String>()
     for draft in appOverridesList {
       let trimmedBundleID = draft.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !trimmedBundleID.isEmpty else {
         continue
       }
+      if seenBundleIDs.contains(trimmedBundleID) {
+        throw NSError(
+          domain: "SettingsError", code: 20,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Duplicate per-application override for bundle ID '\(trimmedBundleID)'. Please combine them into a single entry."
+          ])
+      }
+      seenBundleIDs.insert(trimmedBundleID)
       overridesDict[trimmedBundleID] = AppTypingOverride(
         typingChunkSize: draft.chunkSize,
         typingDelayMicroseconds: draft.delay
@@ -168,6 +178,7 @@ public final class SettingsViewModel: ObservableObject {
 
   // MARK: - Actions Management
 
+  @discardableResult
   public func saveAction(
     id: String?,
     title: String,
@@ -181,7 +192,7 @@ public final class SettingsViewModel: ObservableObject {
     maxInputCharacters: Int,
     allowNewlines: Bool,
     writeStrategy: WriteStrategy
-  ) throws {
+  ) throws -> String {
     // Validation
     let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedSystem = systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -234,7 +245,9 @@ public final class SettingsViewModel: ObservableObject {
     let finalModel = modelOverride?.trimmingCharacters(in: .whitespacesAndNewlines)
     let model = (finalModel?.isEmpty ?? true) ? nil : finalModel
 
+    let finalID: String
     if let existingId = id {
+      finalID = existingId
       // Edit mode
       if let index = actions.firstIndex(where: { $0.id == existingId }) {
         actions[index] = ActionConfig(
@@ -255,10 +268,10 @@ public final class SettingsViewModel: ObservableObject {
     } else {
       // Create mode
       let existingIDs = actions.map { $0.id }
-      let slug = uniqueSlug(for: trimmedTitle, existingIDs: existingIDs)
+      finalID = uniqueSlug(for: trimmedTitle, existingIDs: existingIDs)
 
       let newAction = ActionConfig(
-        id: slug,
+        id: finalID,
         title: trimmedTitle,
         enabled: enabled,
         shortcut: shortcut,
@@ -275,6 +288,7 @@ public final class SettingsViewModel: ObservableObject {
     }
 
     try saveSettings()
+    return finalID
   }
 
   public func deleteAction(id: String) throws {
