@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OvertypeConfig",
+  "type": "OBJECT",
+  "properties": {
+    "global": {
+      "type": "OBJECT",
+      "properties": {
+        "typingSpeedMultiplier": { "type": "NUMBER", "minimum": 0.1, "maximum": 10.0 },
+        "showHUD": { "type": "BOOLEAN" },
+        "typingChunkSize": { "type": ["INTEGER", "NULL"], "minimum": 1 },
+        "typingDelayMicroseconds": { "type": ["INTEGER", "NULL"], "minimum": 0 },
+        "appTypingOverrides": {
+          "type": "OBJECT",
+          "additionalProperties": {
+            "type": "OBJECT",
+            "properties": {
+              "typingChunkSize": { "type": ["INTEGER", "NULL"], "minimum": 1 },
+              "typingDelayMicroseconds": { "type": ["INTEGER", "NULL"], "minimum": 0 }
+            },
+            "required": []
+          }
+        }
+      },
+      "required": ["typingSpeedMultiplier", "showHUD"]
+    },
+    "providers": {
+      "type": "ARRAY",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "id": { "type": "STRING", "pattern": "^[a-z0-9-]+$" },
+          "kind": { "type": "STRING", "enum": ["openai"] },
+          "baseURL": { "type": "STRING", "format": "uri" },
+          "defaultModel": { "type": "STRING" },
+          "timeoutSeconds": { "type": "NUMBER", "minimum": 1.0, "maximum": 300.0 },
+          "keychainKey": { "type": "STRING" }
+        },
+        "required": ["id", "kind", "defaultModel", "timeoutSeconds"]
+      }
+    },
+    "actions": {
+      "type": "ARRAY",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "id": { "type": "STRING", "pattern": "^[a-z0-9-]+$" },
+          "title": { "type": "STRING" },
+          "enabled": { "type": "BOOLEAN" },
+          "shortcut": {
+            "type": ["OBJECT", "NULL"],
+            "properties": {
+              "keyCode": { "type": "INTEGER" },
+              "modifiers": { "type": "INTEGER" },
+              "displayString": { "type": "STRING" }
+            },
+            "required": ["keyCode", "modifiers", "displayString"]
+          },
+          "providerID": { "type": "STRING" },
+          "model": { "type": ["STRING", "NULL"] },
+          "systemPrompt": { "type": "STRING" },
+          "userPromptTemplate": { "type": "STRING" },
+          "temperature": { "type": "NUMBER", "minimum": 0.0, "maximum": 2.0 },
+          "maxInputCharacters": { "type": "INTEGER", "minimum": 1 },
+          "allowNewlines": { "type": "BOOLEAN" },
+          "writeStrategy": { "type": "STRING", "enum": ["typing"] }
+        },
+        "required": ["id", "title", "enabled", "providerID", "systemPrompt", "userPromptTemplate", "temperature", "maxInputCharacters", "allowNewlines", "writeStrategy"]
+      }
+    }
+  },
+  "required": ["global", "providers", "actions"]
+}

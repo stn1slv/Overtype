@@ -1,33 +1,33 @@
 import Foundation
 
 public class ProviderRegistry {
-    public static let shared = ProviderRegistry()
-    
-    private var providers: [String: AIProvider] = [:]
-    
-    private init() {
-        reloadProviders()
+  public static let shared = ProviderRegistry()
+
+  private var providers: [String: AIProvider] = [:]
+
+  private init() {
+    reloadProviders()
+  }
+
+  public func reloadProviders() {
+    providers.removeAll()
+    let providerConfigs = ConfigStore.shared.config.providers
+
+    for config in providerConfigs {
+      switch config.kind {
+      case .openAICompatible:
+        providers[config.id] = OpenAICompatibleProvider(config: config)
+      case .anthropic:
+        // To be implemented in US2
+        break
+      case .ollama:
+        // To be implemented in US3
+        break
+      }
     }
-    
-    public func reloadProviders() {
-        providers.removeAll()
-        let providerConfigs = ConfigStore.shared.config.providers
-        
-        for config in providerConfigs {
-            switch config.kind {
-            case .openAICompatible:
-                providers[config.id] = OpenAICompatibleProvider(config: config)
-            case .anthropic:
-                // To be implemented in US2
-                break
-            case .ollama:
-                // To be implemented in US3
-                break
-            }
-        }
-    }
-    
-    public func provider(for id: String) -> AIProvider? {
-        return providers[id]
-    }
+  }
+
+  public func provider(for id: String) -> AIProvider? {
+    return providers[id]
+  }
 }
