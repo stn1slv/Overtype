@@ -3,11 +3,26 @@ import SwiftUI
 public struct GeneralTab: View {
     @State private var openAIApiKey: String = ""
     @State private var isSaved: Bool = false
+    @StateObject private var launchManager = LaunchAtLoginManager()
     
     public init() {}
     
     public var body: some View {
         Form {
+            Section(header: Text("Startup")) {
+                Toggle("Launch at login", isOn: Binding(
+                    get: { launchManager.isEnabled },
+                    set: { launchManager.setLaunchAtLogin(enabled: $0) }
+                ))
+                .toggleStyle(.checkbox)
+                
+                if let errorMessage = launchManager.errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+            }
+            
             Section(header: Text("OpenAI Configuration")) {
                 SecureField("API Key", text: $openAIApiKey)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -40,6 +55,10 @@ public struct GeneralTab: View {
         .padding()
         .onAppear {
             loadKey()
+            launchManager.refresh()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            launchManager.refresh()
         }
     }
     
