@@ -77,13 +77,13 @@ public class ActionEngine {
                 let validateContext: () throws -> Void = {
                     let currentPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
                     guard currentPID == selection.pid else {
-                        throw ProviderError.cancelled
+                        throw ProviderError.contextChanged
                     }
 
                     // Focused element must still be the same one we read from.
                     let currentFocused = try? AXHelpers.getFocusedElement()
                     guard let currentFocused = currentFocused, CFEqual(currentFocused, selection.element) else {
-                        throw ProviderError.cancelled
+                        throw ProviderError.contextChanged
                     }
 
                     // The selection must still be live and unchanged. A single backspace
@@ -91,7 +91,7 @@ public class ActionEngine {
                     // changed since reading, that backspace would corrupt the document.
                     let currentSelected = try? AXHelpers.getSelectedText(from: selection.element)
                     guard currentSelected == selection.text else {
-                        throw ProviderError.cancelled
+                        throw ProviderError.contextChanged
                     }
                 }
 
@@ -107,11 +107,24 @@ public class ActionEngine {
                 Logger.shared.log("Action '\(action.title)' completed successfully.", level: .info)
                 
             } catch is CancellationError {
+                // User-initiated cancel (Escape) is a deliberate no-op, not a failure.
                 FeedbackPresenter.shared.hide()
                 Logger.shared.log("Action cancelled.", level: .info)
             } catch ProviderError.cancelled {
                 FeedbackPresenter.shared.hide()
-                Logger.shared.log("Action cancelled due to context switch.", level: .info)
+                Logger.shared.log("Action cancelled.", level: .info)
+            } catch ProviderError.contextChanged {
+                // Target context changed since reading; the write was intentionally
+                // skipped. Surface it (no silent failure) instead of just hiding.
+                FeedbackPresenter.shared.showError(message: ProviderError.contextChanged.errorDescription ?? "Target changed; nothing was changed.")
+                Logger.shared.log("Action skipped: target context changed before writing.", level: .warning)
+            } catch let ProviderError.apiError(statusCode, message) {
+                // The HUD (not a log) may show the specific server message so the user
+                // can tell 401/429/500 apart. Keep the raw server body out of info+
+                // logs, since an error body can echo fragments of the submitted text.
+                FeedbackPresenter.shared.showError(message: "API Error \(statusCode): \(message)")
+                Logger.shared.log("Action failed: API error \(statusCode).", level: .error)
+                Logger.shared.sanitizedLog(sensitiveText: message, context: "API error body", level: .debug)
             } catch {
                 FeedbackPresenter.shared.showError(message: error.localizedDescription)
                 Logger.shared.log("Action failed: \(error)", level: .error)

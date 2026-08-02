@@ -29,7 +29,8 @@ public enum ProviderError: Error, LocalizedError {
     case invalidResponse
     case timeout
     case cancelled
-    
+    case contextChanged
+
     public var errorDescription: String? {
         switch self {
         case .apiKeyMissing:
@@ -46,6 +47,8 @@ public enum ProviderError: Error, LocalizedError {
             return "The request timed out."
         case .cancelled:
             return "The request was cancelled."
+        case .contextChanged:
+            return "The selection or active app changed before writing, so nothing was changed."
         }
     }
 }
