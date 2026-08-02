@@ -7,7 +7,10 @@ public struct DefaultConfig {
         {
           "global": {
             "typingSpeedMultiplier": 1.0,
-            "showHUD": true
+            "showHUD": true,
+            "appTypingOverrides": {
+              "com.microsoft.Outlook": { "typingChunkSize": 1, "typingDelayMicroseconds": 10000 }
+            }
           },
           "providers": [
             {
