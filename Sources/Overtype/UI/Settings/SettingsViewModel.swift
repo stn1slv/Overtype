@@ -35,14 +35,33 @@ public final class SettingsViewModel: ObservableObject {
 
   public func reloadFromDisk() {
     let config = ConfigStore.shared.config
+    // This runs on every settings-window refocus. Skip the resync when the user
+    // has unsaved in-memory edits, otherwise a half-entered override row or
+    // unsaved cadence change would be silently discarded when focus briefly
+    // leaves and returns.
+    guard currentInMemoryConfig() == config else { return }
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    // Preserve each row's id across reloads (reloadFromDisk runs on every window
-    // refocus). Minting new UUIDs here would churn ForEach identity and drop the
-    // focused TextField's cursor. Bundle IDs are unique dictionary keys on disk.
+    // Preserve each row's id so an unchanged list keeps stable ForEach identity.
     self.appOverridesList = SettingsViewModel.buildOverridesList(
       from: config, preservingIDsFrom: self.appOverridesList)
+  }
+
+  /// The AppConfig the current in-memory edits would produce if saved. Used to
+  /// detect unsaved changes; mirrors how saveSettings() reconstructs the config
+  /// (overrides are derived from appOverridesList, the source of truth).
+  private func currentInMemoryConfig() -> AppConfig {
+    var overridesDict: [String: AppTypingOverride] = [:]
+    for draft in appOverridesList {
+      let key = draft.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !key.isEmpty else { continue }
+      overridesDict[key] = AppTypingOverride(
+        typingChunkSize: draft.chunkSize, typingDelayMicroseconds: draft.delay)
+    }
+    var updatedGlobal = global
+    updatedGlobal.appTypingOverrides = overridesDict.isEmpty ? nil : overridesDict
+    return AppConfig(global: updatedGlobal, providers: providers, actions: actions)
   }
 
   private static func buildOverridesList(

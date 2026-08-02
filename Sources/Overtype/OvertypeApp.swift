@@ -25,6 +25,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Enforce a single running instance. A second menu-bar copy would register
     // duplicate global hotkeys that fight each other, so if another instance is
     // already running we quit before creating the status item or any hotkeys.
+    // LSMultipleInstancesProhibited in Info.plist blocks the normal second
+    // launch race-free; this runtime check is a backstop for `open -n` and the
+    // (very unlikely) simultaneous-launch race, where both copies could see
+    // each other and both quit.
     if let bundleID = Bundle.main.bundleIdentifier {
       let ownPID = getpid()
       let hasOtherInstance = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
