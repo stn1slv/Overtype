@@ -39,31 +39,27 @@ public final class SettingsViewModel: ObservableObject {
       from: config, preservingIDsFrom: appOverridesList)
     // This runs on every settings-window refocus. Skip the resync when the user
     // has unsaved in-memory edits, otherwise a half-entered row or unsaved change
-    // would be silently discarded when focus briefly leaves and returns. The
-    // first check catches in-progress override rows, including a newly added row
-    // whose bundleID is still empty (which currentInMemoryConfig normalizes away);
-    // the second catches cadence, provider, and action edits.
-    guard appOverridesList == storeOverrides, currentInMemoryConfig() == config else { return }
+    // would be silently discarded when focus briefly leaves and returns.
+    //
+    // Overrides are compared via the draft list, which catches in-progress rows
+    // (including a newly added one whose bundleID is still empty). The rest of
+    // the config is compared with appTypingOverrides neutralized on both sides:
+    // the draft list already covers overrides, and comparing them here would
+    // misread a clean state as edited whenever the stored config represents no
+    // overrides as an empty dictionary while the model normalizes it to nil.
+    var inMemoryGlobal = global
+    var storeGlobal = config.global
+    inMemoryGlobal.appTypingOverrides = nil
+    storeGlobal.appTypingOverrides = nil
+    guard appOverridesList == storeOverrides,
+      inMemoryGlobal == storeGlobal,
+      providers == config.providers,
+      actions == config.actions
+    else { return }
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
     self.appOverridesList = storeOverrides
-  }
-
-  /// The AppConfig the current in-memory edits would produce if saved. Used to
-  /// detect unsaved changes; mirrors how saveSettings() reconstructs the config
-  /// (overrides are derived from appOverridesList, the source of truth).
-  private func currentInMemoryConfig() -> AppConfig {
-    var overridesDict: [String: AppTypingOverride] = [:]
-    for draft in appOverridesList {
-      let key = draft.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !key.isEmpty else { continue }
-      overridesDict[key] = AppTypingOverride(
-        typingChunkSize: draft.chunkSize, typingDelayMicroseconds: draft.delay)
-    }
-    var updatedGlobal = global
-    updatedGlobal.appTypingOverrides = overridesDict.isEmpty ? nil : overridesDict
-    return AppConfig(global: updatedGlobal, providers: providers, actions: actions)
   }
 
   private static func buildOverridesList(
