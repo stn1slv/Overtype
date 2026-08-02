@@ -10,6 +10,24 @@ Because Overtype depends on the macOS Accessibility API (AX) to read and manipul
 - **Web Browsers**: Text areas and rich-text editors inside standard browsers.
 - **New Outlook** (`com.microsoft.Outlook`, the Chromium/web rewrite): supported, but only with a slowed typing cadence. It applies synthetic keystrokes asynchronously and reorders or drops them under the default fast burst, corrupting the output. The default configuration ships a verified per-app override (one character per event, 10 ms delay); see `appTypingOverrides` in the README. Verified: one character / 10 ms and one character / 20 ms both produce correct output.
 
+### Dormant accessibility trees (Microsoft Teams, VS Code class)
+
+Verified 2026-08-02 (live diagnostic against Teams `com.microsoft.teams2`, process restarted the same day):
+
+- After the Teams process restarts, its accessibility tree is **dormant**: every AX query (focused element, focused window, main window) returns `noValue` immediately, so a single-shot lookup fails with `noFocusedElement` in ~12 ms. The tree stays dormant until an assistive client announces itself.
+- Setting `AXEnhancedUserInterface = true` on the Teams application element wakes the tree. **The set call returns `.notImplemented` (-25208) yet takes effect** (read-back flips to true; reads started succeeding with no other change). Do not treat the AX return code as evidence in either direction; this is the read-side mirror of the known Teams write quirk (set-selected-text returns success while changing nothing; see the constitution, Principle III rationale).
+- `AXManualAccessibility` is the Electron equivalent: accepted by VS Code and Claude desktop, rejected by Teams (`attributeUnsupported`).
+- Overtype therefore performs a bounded recovery when the normal lookup finds nothing: set both wake flags (ignoring their return codes), apply a 2 s AX messaging timeout, and retry the app-element-first lookup up to 24 times at 150 ms intervals (ordering and interval validated by the 2026-07-31 axprobe series; the attempt count was raised from 12 after the 2026-08-02 cold-Teams acceptance run showed the selection attribute populates only ~2.7 s after the wake). The recovery runs only on the failure path, so well-behaved apps see no change; the wake state persists until the target app restarts.
+
+Manual acceptance for this feature (`specs/005-teams-ax-recovery/quickstart.md`):
+
+| Scenario | Expected | Result |
+|----------|----------|--------|
+| B. Cold Teams restart, first run recovers (twice) | Success within ~3 s of a warm run | 2026-08-02 partial: recovery triggered and woke the cold tree (old build failed instantly in the same state); with the 12-attempt window the first press ended in the clean `cannotReadSelectedText` error and the second press succeeded instantly. Window raised to 24 attempts; single-press cold retest pending |
+| C. Warm Teams / Outlook / native app unchanged | No recovery log lines, unchanged latency | 2026-08-02 pass for warm Teams and Outlook (instant reads, no recovery lines); native app pending |
+| D. Nothing selected fails fast; Escape cancels recovery | Same errors; cancel < 1 s | pending |
+| E. Regression sweep (Outlook, native, VS Code) | Matches existing entries | pending |
+
 ## Unsupported / Problematic Applications
 
 - **Terminal Emulators**: iTerm2, Terminal.app, Alacritty. (Terminals don't select and manage text via standard macOS AX text ranges).

@@ -23,7 +23,22 @@ public enum AXError: Error, LocalizedError {
 
 public class AXHelpers {
 
-  public static func getFocusedElement() throws -> AXUIElement {
+  /// Empirically validated dormant-tree recovery configuration
+  /// (axprobe findings 2026-07-31, binding conclusion #3; re-verified 2026-08-02).
+  /// 24 attempts, not the findings' 12: the acceptance run against a truly cold
+  /// Teams (2026-08-02 21:40) showed the focused element appears quickly after
+  /// the wake but its selection attribute populates only ~2.7 s in; 12 x 150 ms
+  /// (1.8 s) missed it, 24 x 150 ms (~3.5 s) covers it with margin.
+  private static let recoveryAttempts = 24
+  private static let recoveryIntervalSeconds: TimeInterval = 0.15
+  private static let recoveryMessagingTimeoutSeconds: Float = 2.0
+
+  /// - Parameter wakeDormantTree: when true and no strategy finds any element,
+  ///   escalate once: set the assistive-client wake flags on the target app and
+  ///   retry the lookup for a bounded window. Only the initial selection read
+  ///   opts in; the pre-write context re-check stays single-shot so a genuine
+  ///   context change still aborts fast (Principle II).
+  public static func getFocusedElement(wakeDormantTree: Bool = false) throws -> AXUIElement {
     guard let app = NSWorkspace.shared.frontmostApplication else {
       throw AXError.noFocusedApplication
     }
@@ -107,6 +122,23 @@ public class AXHelpers {
       }
     }
 
+    // 6. Dormant-tree recovery. Entered only when the strategies above found
+    // NOTHING (not even a selection-less focused element): that is the
+    // signature of a lazily built accessibility tree that has not been woken
+    // yet (Microsoft Teams after a process restart, VS Code shortly after
+    // launch). If any element was found, the tree is awake and retrying
+    // cannot conjure a selection, so we skip recovery and fail fast.
+    if wakeDormantTree && fallbackCandidate == nil {
+      Logger.shared.log(
+        "No focused element found; attempting dormant-tree recovery (pid \(app.processIdentifier)).",
+        level: .info)
+      wakeDormantAccessibilityTree(appElement: appElement)
+      // Whatever the retry finds (with or without a live selection) is returned
+      // via the fallback path below; the caller reads the selection itself.
+      fallbackCandidate = try retryFocusLookup(
+        appElement: appElement, targetPid: app.processIdentifier)
+    }
+
     // No element reported a live selection. Return the best focused candidate so
     // the caller surfaces "cannot read selected text" rather than "no element".
     if let fallbackCandidate = fallbackCandidate {
@@ -114,6 +146,76 @@ public class AXHelpers {
     }
 
     throw AXError.noFocusedElement
+  }
+
+  /// Signals "an assistive client is present" so lazily initialized apps build
+  /// their accessibility tree. Both set calls deliberately ignore the returned
+  /// error code:
+  /// - QUIRK WORKAROUND (verified 2026-08-02): Microsoft Teams returns
+  ///   `.notImplemented` (-25208) for `AXEnhancedUserInterface` yet HONORS the
+  ///   write - the value read back flips to true and the dormant tree
+  ///   activates. The return code is not evidence of failure, just as a
+  ///   success code is not evidence of effect (constitution Principle III).
+  /// - `AXManualAccessibility` is the Electron-specific equivalent (accepted
+  ///   by VS Code and Claude desktop, rejected by Teams with
+  ///   `.attributeUnsupported`; axprobe findings 2026-07-31). Setting both
+  ///   covers both app families.
+  private static func wakeDormantAccessibilityTree(appElement: AXUIElement) {
+    _ = AXUIElementSetAttributeValue(
+      appElement, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+    _ = AXUIElementSetAttributeValue(
+      appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+  }
+
+  /// Retries the focused-element lookup after a wake-up, app element first
+  /// (the only path that works for Teams; the system-wide element is a
+  /// secondary), for a bounded window. Returns the first element exposing a
+  /// non-empty selection, else the last selection-less focused element found
+  /// (so the caller can surface the specific "cannot read" error), else nil.
+  /// Checks for task cancellation each attempt so Escape stays responsive.
+  private static func retryFocusLookup(
+    appElement: AXUIElement, targetPid: pid_t
+  ) throws -> AXUIElement? {
+    // Bound every query against a hung or still-initializing AX server so the
+    // whole recovery stays within the run's hard timeout.
+    AXUIElementSetMessagingTimeout(appElement, recoveryMessagingTimeoutSeconds)
+    let systemWideElement = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(systemWideElement, recoveryMessagingTimeoutSeconds)
+
+    var candidate: AXUIElement?
+    for attempt in 1...recoveryAttempts {
+      try Task.checkCancellation()
+
+      for source in [appElement, systemWideElement] {
+        var value: CFTypeRef?
+        let error = AXUIElementCopyAttributeValue(
+          source, kAXFocusedUIElementAttribute as CFString, &value)
+        if error == .success, let element = asElement(value) {
+          // The system-wide element can report focus in a different app; only
+          // accept elements owned by the target (mirrors strategy 1's check).
+          var elementPid: pid_t = 0
+          AXUIElementGetPid(element, &elementPid)
+          guard elementPid == targetPid else { continue }
+          if elementHasSelectedText(element) {
+            Logger.shared.log(
+              "Dormant-tree recovery found the selection on attempt \(attempt).", level: .info)
+            return element
+          }
+          candidate = element
+        }
+      }
+
+      // No sleep after the last attempt; it would only delay the failure.
+      if attempt < recoveryAttempts {
+        Thread.sleep(forTimeInterval: recoveryIntervalSeconds)
+      }
+    }
+
+    Logger.shared.log(
+      "Dormant-tree recovery exhausted after \(recoveryAttempts) attempts "
+        + "(focused element found: \(candidate != nil)).",
+      level: .warning)
+    return candidate
   }
 
   /// Safely narrows an Accessibility attribute value (typed as `CFTypeRef` by the
