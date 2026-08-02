@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-01
 
-**Status**: Draft
+**Status**: Completed
 
 **Input**: User description: "I would like to add configuration option 'launch at login' as a checkbox. Also, don't forget to increment minor version of the application"
 

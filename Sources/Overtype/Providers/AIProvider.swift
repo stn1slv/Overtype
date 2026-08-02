@@ -33,6 +33,8 @@ public enum ProviderError: Error, LocalizedError {
   case timeout
   case cancelled
   case contextChanged
+  case responseBlocked(reason: String)
+  case emptyResponse
 
   public var errorDescription: String? {
     switch self {
@@ -52,6 +54,10 @@ public enum ProviderError: Error, LocalizedError {
       return "The request was cancelled."
     case .contextChanged:
       return "The selection or active app changed before writing, so nothing was changed."
+    case .responseBlocked(let reason):
+      return "The AI provider blocked the response (reason: \(reason)). Nothing was changed."
+    case .emptyResponse:
+      return "The AI provider returned no text to write. Nothing was changed."
     }
   }
 }

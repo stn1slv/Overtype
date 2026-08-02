@@ -18,6 +18,8 @@ Why? Modern enterprise environments use strict MDM policies, DLP (Data Loss Prev
 Network calls are made exclusively to the endpoints configured by the user in `config.json`.
 For OpenAI, the request is sent directly from your machine to `api.openai.com`. There are no intermediary servers or proxies.
 
+When you invoke a **Google Gemini** action, the selected text is sent directly from your machine to Google's Gemini endpoint (`generativelanguage.googleapis.com`) and nowhere else. The Gemini API key is read from the macOS Keychain and sent in the `x-goog-api-key` request header; it is never placed in the request URL, written to `config.json`, or logged.
+
 ## Credential Storage
 
 API keys are not stored in plaintext configuration files. They are placed in the secure macOS Keychain using `kSecClassGenericPassword`.
