@@ -52,6 +52,7 @@ public enum ProviderKind: String, Codable, Equatable {
   case openAICompatible = "openai"
   case anthropic = "anthropic"
   case ollama = "ollama"
+  case gemini = "gemini"
 }
 
 public struct ProviderConfig: Codable, Equatable {

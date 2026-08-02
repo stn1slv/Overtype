@@ -23,6 +23,8 @@ public class ProviderRegistry {
       case .ollama:
         // To be implemented in US3
         break
+      case .gemini:
+        providers[config.id] = GeminiProvider(config: config)
       }
     }
   }

@@ -7,7 +7,7 @@ It securely modifies text via macOS Accessibility APIs, completely bypassing the
 ## Features
 
 - **Clipboard Isolation**: Overtype never touches `NSPasteboard`. It reads and types text strictly through the macOS Accessibility API (`AXUIElement` & `CGEvent`).
-- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano). (Anthropic and Ollama support coming soon).
+- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano) and Google Gemini. (Anthropic and Ollama support coming soon).
 - **Global Hotkeys**: Highlight text in any application (like MS Teams or Apple Notes), hit a shortcut (e.g. ⌃⌥⌘G), and watch the text get magically replaced inline.
 - **Privacy First**: By default, sensitive text is never written to disk; only standard, sanitized application logs are recorded. Unredacted text is logged only if you explicitly enable debug logging.
 
@@ -101,6 +101,46 @@ Because Overtype values privacy and security, API keys are never stored in your 
 Overtype resolves the AI model to use in the following order:
 1. **Action-level model**: If an action specifies a `"model"` key (e.g. `"model": "gpt-4o-mini"`), it is used. This allows you to use faster/cheaper models for simple tasks and heavier models for complex rewrites.
 2. **Provider-level default**: If the action omits the model, Overtype falls back to the `"defaultModel"` specified in the provider's configuration.
+
+### Using Google Gemini
+
+Overtype talks to Google Gemini natively (it calls the Gemini `generateContent`
+API directly; your text is never sent to any intermediary). Enabling it is pure
+configuration, no rebuild required.
+
+1. Get a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
+
+2. Add a Gemini provider block to the `"providers"` array in
+   `~/Library/Application Support/Overtype/config.json`:
+
+   ```json
+   {
+     "id": "gemini",
+     "kind": "gemini",
+     "defaultModel": "gemini-3.5-flash-lite",
+     "timeoutSeconds": 30.0,
+     "keychainKey": "overtype-gemini-key"
+   }
+   ```
+
+   The `"baseURL"` may be omitted; Overtype defaults to
+   `https://generativelanguage.googleapis.com/v1beta/`.
+
+3. Store your key in the macOS Keychain under the exact `keychainKey` name. The
+   in-app Settings key field currently manages the OpenAI key only, so store the
+   Gemini key from Terminal:
+
+   ```sh
+   security add-generic-password -a "$USER" -s "overtype-gemini-key" -w "YOUR_GEMINI_API_KEY" -U
+   ```
+
+4. Point an action at the provider by setting its `"providerID"` to `"gemini"`
+   (optionally set a per-action `"model"` to override the default). The key is
+   sent in the `x-goog-api-key` request header and never written to
+   `config.json`, logs, or the URL.
+
+The shipped default configuration does not include a Gemini provider, so a fresh
+install adds no extra provider or shortcut until you add the block above.
 
 ## Security & Privacy Constraints
 

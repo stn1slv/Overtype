@@ -24,6 +24,32 @@ final class AppConfigTests: XCTestCase {
     }
   }
 
+  func testGeminiProviderConfigDecodes() {
+    let json = #"""
+      {
+        "id": "gemini",
+        "kind": "gemini",
+        "defaultModel": "gemini-3.5-flash-lite",
+        "timeoutSeconds": 30,
+        "keychainKey": "gemini-api-key"
+      }
+      """#
+    guard let data = json.data(using: .utf8) else {
+      XCTFail("Failed to convert Gemini provider JSON to data")
+      return
+    }
+
+    do {
+      let provider = try JSONDecoder().decode(ProviderConfig.self, from: data)
+      XCTAssertEqual(provider.kind, .gemini)
+      XCTAssertEqual(provider.id, "gemini")
+      XCTAssertEqual(provider.defaultModel, "gemini-3.5-flash-lite")
+      XCTAssertEqual(provider.keychainKey, "gemini-api-key")
+    } catch {
+      XCTFail("Failed to decode Gemini ProviderConfig: \(error)")
+    }
+  }
+
   func testAppConfigRoundTripEncoding() {
     let original = AppConfig(
       global: GeneralConfig(
