@@ -16,7 +16,10 @@ public class SelectionReader: SelectionReading {
   public init() {}
 
   public func readSelection() throws -> Selection {
-    let element = try AXHelpers.getFocusedElement()
+    // The initial read opts into dormant-tree recovery (wake flags + bounded
+    // retry) so a freshly restarted Teams/VS Code works; the pre-write context
+    // re-check in ActionEngine deliberately stays single-shot.
+    let element = try AXHelpers.getFocusedElement(wakeDormantTree: true)
     let text = try AXHelpers.getSelectedText(from: element)
 
     guard !text.isEmpty else {
