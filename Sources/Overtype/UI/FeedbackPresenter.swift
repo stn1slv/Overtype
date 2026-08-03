@@ -58,6 +58,16 @@ public class FeedbackPresenter: FeedbackPresenting {
         defer: false
       )
 
+      // The HUD must stay visible wherever the run happens: above the target
+      // app's windows, on every Space, and over fullscreen apps. Without these,
+      // a run over a fullscreen target shows no feedback at all, which reads as
+      // silent failure. NSPanel also defaults to hidesOnDeactivate == true,
+      // which would hide the HUD because Overtype (an accessory app) is never
+      // the active application during a run.
+      panel.level = .statusBar
+      panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+      panel.hidesOnDeactivate = false
+
       let view = HUDAppKitView(frame: NSRect(x: 0, y: 0, width: 300, height: 60))
       panel.contentView = view
       panel.center()

@@ -8,11 +8,32 @@ public struct ProvidersTab: View {
 
   // Form fields
   @State private var name = ""
+  @State private var kind: ProviderKind = .openAICompatible
   @State private var baseURLString = ""
   @State private var defaultModel = ""
   @State private var timeout = 30.0
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
+
+  /// Kinds selectable in the form. Anthropic and Ollama are unimplemented stubs
+  /// in ProviderRegistry and stay hidden; a hand-edited config using one of
+  /// them still shows its current kind so editing does not silently change it.
+  private var selectableKinds: [ProviderKind] {
+    var kinds: [ProviderKind] = [.openAICompatible, .gemini]
+    if let current = editingProvider?.kind, !kinds.contains(current) {
+      kinds.append(current)
+    }
+    return kinds
+  }
+
+  private func kindLabel(_ kind: ProviderKind) -> String {
+    switch kind {
+    case .openAICompatible: return "OpenAI-compatible"
+    case .gemini: return "Gemini"
+    case .anthropic: return "Anthropic (not implemented)"
+    case .ollama: return "Ollama (not implemented)"
+    }
+  }
 
   public init(viewModel: SettingsViewModel) {
     self.viewModel = viewModel
@@ -36,9 +57,14 @@ public struct ProvidersTab: View {
         ForEach(viewModel.providers, id: \.id) { provider in
           HStack {
             VStack(alignment: .leading, spacing: 2) {
-              Text(provider.id)
-                .font(.system(.body, design: .monospaced))
-                .fontWeight(.bold)
+              HStack(spacing: 6) {
+                Text(provider.id)
+                  .font(.system(.body, design: .monospaced))
+                  .fontWeight(.bold)
+                Text(kindLabel(provider.kind))
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              }
               if let baseURL = provider.baseURL {
                 Text(baseURL.absoluteString)
                   .font(.caption)
@@ -77,7 +103,17 @@ public struct ProvidersTab: View {
             TextField("Name", text: $name)
               .disabled(editingProvider != nil)
 
-            TextField("Base URL", text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
+            Picker("Kind", selection: $kind) {
+              ForEach(selectableKinds, id: \.self) { kind in
+                Text(kindLabel(kind)).tag(kind)
+              }
+            }
+
+            TextField(
+              "Base URL", text: $baseURLString,
+              prompt: Text(
+                kind == .gemini
+                  ? "Default: generativelanguage.googleapis.com" : "https://api.openai.com/v1"))
 
             TextField("Default Model", text: $defaultModel)
 
@@ -119,6 +155,7 @@ public struct ProvidersTab: View {
   private func prepareAddForm() {
     editingProvider = nil
     name = ""
+    kind = .openAICompatible
     baseURLString = ""
     defaultModel = ""
     timeout = 30.0
@@ -130,6 +167,7 @@ public struct ProvidersTab: View {
   private func prepareEditForm(_ provider: ProviderConfig) {
     editingProvider = provider
     name = provider.id
+    kind = provider.kind
     baseURLString = provider.baseURL?.absoluteString ?? ""
     defaultModel = provider.defaultModel
     timeout = provider.timeoutSeconds
@@ -143,6 +181,7 @@ public struct ProvidersTab: View {
       try viewModel.saveProvider(
         id: editingProvider?.id,
         name: name,
+        kind: kind,
         baseURLString: baseURLString,
         defaultModel: defaultModel,
         timeout: timeout,

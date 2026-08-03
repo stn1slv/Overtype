@@ -27,6 +27,21 @@ final class ResponseSanitizerTests: XCTestCase {
     XCTAssertEqual(result, "\"Hello world.\"")
   }
 
+  func testKeepsQuotesWhenInteriorContainsQuotes() {
+    // Starts and ends with a quote but is not wrapped; stripping would corrupt it.
+    let original = "Hi, he said. Bye."
+    let rawResponse = "\"Hi,\" he said. \"Bye.\""
+    let result = sanitizer.sanitize(response: rawResponse, originalText: original)
+    XCTAssertEqual(result, "\"Hi,\" he said. \"Bye.\"")
+  }
+
+  func testSingleQuoteCharacterIsLeftAlone() {
+    let original = "x"
+    let rawResponse = "\""
+    let result = sanitizer.sanitize(response: rawResponse, originalText: original)
+    XCTAssertEqual(result, "\"")
+  }
+
   func testStripsMarkdownBlocks() {
     let original = "let x = 1"
     let rawResponse = "```swift\nlet x = 1\n```"

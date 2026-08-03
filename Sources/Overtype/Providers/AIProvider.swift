@@ -60,4 +60,26 @@ public enum ProviderError: Error, LocalizedError {
       return "The AI provider returned no text to write. Nothing was changed."
     }
   }
+
+  /// Maps a transport-layer failure from `URLSession` to a typed provider error,
+  /// so every provider distinguishes cancellation (Escape) and timeout from
+  /// other network failures the same way. Pure logic, unit-tested.
+  public static func mapTransportError(_ error: Error) -> ProviderError {
+    // Escape/Task cancellation before the request resolves surfaces as a
+    // structured-concurrency CancellationError; map it to the clean no-op.
+    if error is CancellationError {
+      return .cancelled
+    }
+    if let urlError = error as? URLError {
+      switch urlError.code {
+      case .timedOut:
+        return .timeout
+      case .cancelled:
+        return .cancelled
+      default:
+        return .networkError(urlError)
+      }
+    }
+    return .networkError(error)
+  }
 }

@@ -19,9 +19,6 @@ public class ActionEngine {
   }
 
   public func run(action: ActionConfig) {
-    // Cancel any in-flight task
-    currentTask?.cancel()
-
     guard let provider = ProviderRegistry.shared.provider(for: action.providerID) else {
       Logger.shared.log("Provider \(action.providerID) not found.", level: .error)
       FeedbackPresenter.shared.showError(message: "Provider not configured")
@@ -35,9 +32,27 @@ public class ActionEngine {
       config.providers.first(where: { $0.id == action.providerID })?.defaultModel ?? "unknown"
     let model = action.model ?? defaultModel
 
-    FeedbackPresenter.shared.showLoading(message: "Reading...")
+    // Progress states honor the Show HUD preference; errors are always shown
+    // regardless (Principle VI: no silent failure).
+    let showHUD = config.global.showHUD
+    let showProgress: (String) -> Void = { message in
+      if showHUD { FeedbackPresenter.shared.showLoading(message: message) }
+    }
 
+    // Serialize runs (Principle II): TextWriter deliberately finishes typing
+    // once the first destructive keystroke has landed, so a second hotkey press
+    // must not start reading or writing while the previous run may still be
+    // typing. The new run cancels the previous task, then awaits its full
+    // completion (including its HUD updates) before touching anything.
+    let previous = currentTask
     currentTask = Task {
+      previous?.cancel()
+      _ = await previous?.value
+
+      // A newer run may have superseded this one while it waited.
+      guard !Task.isCancelled else { return }
+
+      showProgress("Reading...")
       do {
         let selection = try selectionReader.readSelection()
 
@@ -46,7 +61,7 @@ public class ActionEngine {
           return
         }
 
-        FeedbackPresenter.shared.showLoading(message: "Thinking...")
+        showProgress("Thinking...")
 
         let request = TransformRequest(
           text: selection.text,
@@ -72,13 +87,18 @@ public class ActionEngine {
           return
         }
 
-        FeedbackPresenter.shared.showLoading(message: "Writing...")
+        showProgress("Writing...")
 
         // Context re-check (Principle II). Passed as a closure so the writer can
         // run it *after* its modifier-release wait, immediately before the first
         // destructive keystroke. Validating here (before the wait) would leave a
         // window in which focus/selection changes but the write still proceeds.
         let validateContext: () throws -> Void = {
+          // Last cancellation point: the writer calls this immediately before
+          // the first destructive keystroke, so an Escape pressed at any time
+          // up to here still aborts with the document untouched.
+          try Task.checkCancellation()
+
           let currentPID = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
           guard currentPID == selection.pid else {
             throw ProviderError.contextChanged
@@ -140,8 +160,9 @@ public class ActionEngine {
   }
 
   public func cancel() {
+    // The run task owns the HUD lifecycle: its catch/completion paths hide it.
+    // Hiding here would blank the HUD while a non-abortable write is still
+    // typing, which looks like a stop that did not happen.
     currentTask?.cancel()
-    currentTask = nil
-    FeedbackPresenter.shared.hide()
   }
 }

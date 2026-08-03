@@ -58,19 +58,24 @@ public struct GeneralTab: View {
           Color.clear.frame(width: 0, height: 0)
           Toggle("Show HUD", isOn: $viewModel.global.showHUD)
             .toggleStyle(.checkbox)
+            .help("Hides the progress indicator during a run. Errors are always shown.")
         }
 
+        // The row label in the leading Grid column already names each field, so
+        // the TextField's own label is hidden; otherwise it renders inside the
+        // fixed frame and squeezes the input box to a few characters.
         GridRow {
           Text("Default Chunk Size")
           HStack {
             TextField(
-              "Default",
+              "Default Chunk Size",
               value: Binding(
                 get: { viewModel.global.typingChunkSize ?? 0 },
                 set: { viewModel.global.typingChunkSize = $0 == 0 ? nil : $0 }
               ), formatter: NumberFormatter(), prompt: Text("Standard")
             )
-            .frame(width: 80)
+            .labelsHidden()
+            .frame(width: 100)
             .textFieldStyle(RoundedBorderTextFieldStyle())
             Spacer()
           }
@@ -80,13 +85,14 @@ public struct GeneralTab: View {
           Text("Default Delay (µs)")
           HStack {
             TextField(
-              "Default",
+              "Default Delay (µs)",
               value: Binding(
                 get: { viewModel.global.typingDelayMicroseconds ?? 0 },
                 set: { viewModel.global.typingDelayMicroseconds = $0 == 0 ? nil : $0 }
               ), formatter: NumberFormatter(), prompt: Text("Standard")
             )
-            .frame(width: 80)
+            .labelsHidden()
+            .frame(width: 100)
             .textFieldStyle(RoundedBorderTextFieldStyle())
             Spacer()
           }

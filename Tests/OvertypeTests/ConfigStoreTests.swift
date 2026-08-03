@@ -24,4 +24,19 @@ final class ConfigStoreTests: XCTestCase {
     XCTAssertEqual(override?.typingChunkSize, 1)
     XCTAssertEqual(override?.typingDelayMicroseconds, 10000)
   }
+
+  func testInvalidBackupFileNameFormat() {
+    var components = DateComponents()
+    components.year = 2026
+    components.month = 8
+    components.day = 3
+    components.hour = 14
+    components.minute = 5
+    components.second = 9
+    components.timeZone = TimeZone.current
+    let date = Calendar(identifier: .gregorian).date(from: components)!
+
+    XCTAssertEqual(
+      ConfigStore.invalidBackupFileName(for: date), "config.json.invalid-20260803-140509")
+  }
 }

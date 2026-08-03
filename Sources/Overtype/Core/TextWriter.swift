@@ -109,7 +109,7 @@ public class TextWriter: TextWriting {
         Logger.shared.log(
           "Modifiers were held too long. Aborting write to prevent unexpected hotkeys.",
           level: .error)
-        throw AXError.cannotWriteSelectedText
+        throw AXError.modifiersHeldTooLong
       }
 
       Thread.sleep(forTimeInterval: Double(waitIntervalMs) / 1000.0)

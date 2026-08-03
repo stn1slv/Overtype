@@ -50,6 +50,59 @@ final class AppConfigTests: XCTestCase {
     }
   }
 
+  // MARK: - Tolerant decoding (missing keys fall back to defaults instead of
+  // failing the whole config decode)
+
+  func testProviderConfigDecodesWithoutTimeoutSeconds() throws {
+    let json = #"{"id": "p1", "kind": "openai", "defaultModel": "gpt-4o"}"#
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(provider.timeoutSeconds, 30.0)
+    XCTAssertNil(provider.baseURL)
+    XCTAssertNil(provider.keychainKey)
+  }
+
+  func testActionConfigDecodesWithOnlyRequiredFields() throws {
+    let json = #"""
+      {
+        "id": "a1",
+        "title": "Test",
+        "providerID": "p1",
+        "systemPrompt": "sys",
+        "userPromptTemplate": "{{text}}"
+      }
+      """#
+    let action = try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8))
+    XCTAssertTrue(action.enabled)
+    XCTAssertNil(action.shortcut)
+    XCTAssertNil(action.model)
+    XCTAssertEqual(action.temperature, 0.0)
+    XCTAssertEqual(action.maxInputCharacters, 5000)
+    XCTAssertFalse(action.allowNewlines)
+    XCTAssertEqual(action.writeStrategy, .typing)
+  }
+
+  func testGeneralConfigDecodesFromEmptyObject() throws {
+    let general = try JSONDecoder().decode(GeneralConfig.self, from: Data("{}".utf8))
+    XCTAssertEqual(general.typingSpeedMultiplier, 1.0)
+    XCTAssertTrue(general.showHUD)
+    XCTAssertNil(general.typingChunkSize)
+    XCTAssertNil(general.typingDelayMicroseconds)
+    XCTAssertNil(general.appTypingOverrides)
+  }
+
+  func testAppConfigDecodesWithMissingSections() throws {
+    let config = try JSONDecoder().decode(AppConfig.self, from: Data("{}".utf8))
+    XCTAssertEqual(config.global, GeneralConfig())
+    XCTAssertTrue(config.providers.isEmpty)
+    XCTAssertTrue(config.actions.isEmpty)
+  }
+
+  func testActionConfigMissingRequiredFieldStillFails() {
+    // Identity and prompts stay required: an action without them is unusable.
+    let json = #"{"id": "a1", "title": "Test", "providerID": "p1"}"#
+    XCTAssertThrowsError(try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8)))
+  }
+
   func testAppConfigRoundTripEncoding() {
     let original = AppConfig(
       global: GeneralConfig(

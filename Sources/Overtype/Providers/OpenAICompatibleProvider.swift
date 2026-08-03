@@ -54,7 +54,15 @@ public class OpenAICompatibleProvider: AIProvider {
 
     urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-    let (data, response) = try await urlSession.data(for: urlRequest)
+    let data: Data
+    let response: URLResponse
+    do {
+      (data, response) = try await urlSession.data(for: urlRequest)
+    } catch {
+      // Typed mapping so Escape maps to a quiet cancel and a timeout to
+      // ProviderError.timeout instead of a generic error HUD.
+      throw ProviderError.mapTransportError(error)
+    }
 
     guard let httpResponse = response as? HTTPURLResponse else {
       throw ProviderError.invalidResponse

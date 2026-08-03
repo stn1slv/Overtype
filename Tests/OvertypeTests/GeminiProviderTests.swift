@@ -17,6 +17,18 @@ final class GeminiProviderTests: XCTestCase {
     XCTAssertEqual(result, "Hello world")
   }
 
+  func testSkipsThoughtPartsWhenExtractingText() throws {
+    // A part flagged "thought": true carries model reasoning, which must never
+    // be typed into the user's document.
+    let body = #"""
+      {"candidates":[{"content":{"parts":[
+      {"text":"internal reasoning","thought":true},
+      {"text":"Hello world"}],"role":"model"},"finishReason":"STOP"}]}
+      """#
+    let result = try GeminiProvider.parseResponseText(from: data(body))
+    XCTAssertEqual(result, "Hello world")
+  }
+
   func testConcatenatesMultipleParts() throws {
     let body = #"""
       {"candidates":[{"content":{"parts":[{"text":"Hello "},{"text":"world"}],"role":"model"},
