@@ -18,6 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   var settingsWindow: NSWindow?
   var globalEscapeMonitor: Any?
   var localEscapeMonitor: Any?
+  var permissionPollTimer: Timer?
   let engine = ActionEngine()
   let hotkeyManager = HotkeyManager()
 
@@ -44,7 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     Logger.shared.log("Overtype starting up...", level: .info)
 
     // Ensure accessibility permissions are granted
-    _ = PermissionManager.checkAndPrompt()
+    let isTrusted = PermissionManager.checkAndPrompt()
 
     // Setup menu bar icon
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -57,6 +58,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Initialize Config
     _ = ConfigStore.shared
 
+    // Surface a config file that could not be read (no silent failure): the
+    // defaults are in use and the unreadable file was preserved on disk.
+    if let failureMessage = ConfigStore.shared.loadFailureMessage {
+      // An accessory app is not active at launch; without activation the modal
+      // alert can appear unfocused behind other windows.
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "Configuration could not be loaded"
+      alert.informativeText = failureMessage
+      alert.alertStyle = .warning
+      alert.runModal()
+    }
+
     // Register hotkeys
     hotkeyManager.registerHotkeys(for: ConfigStore.shared.config.actions) { [weak self] action in
       self?.engine.run(action: action)
@@ -65,10 +79,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Register Escape key to cancel in-flight tasks
     setupEscapeMonitors()
 
+    // QUIRK WORKAROUND: a global NSEvent monitor installed while the process is
+    // not Accessibility-trusted never starts delivering events, even after the
+    // user grants the permission. On the standard first-run flow (grant in
+    // System Settings without relaunching) Escape-cancel would silently never
+    // work, so poll until trust appears and then reinstall the monitors.
+    if !isTrusted {
+      permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) {
+        [weak self] timer in
+        guard AXIsProcessTrusted() else { return }
+        timer.invalidate()
+        self?.permissionPollTimer = nil
+        self?.reinstallEscapeMonitors()
+        Logger.shared.log(
+          "Accessibility permission granted; escape monitors reinstalled.", level: .info)
+      }
+    }
+
     // Listen for configuration changes
     NotificationCenter.default.addObserver(
       self, selector: #selector(configDidChange),
-      name: Notification.Name("OvertypeConfigDidChange"), object: nil)
+      name: .overtypeConfigDidChange, object: nil)
   }
 
   func setupEscapeMonitors() {
@@ -84,6 +115,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handler)
+  }
+
+  func reinstallEscapeMonitors() {
+    if let monitor = globalEscapeMonitor {
+      NSEvent.removeMonitor(monitor)
+      globalEscapeMonitor = nil
+    }
+    if let monitor = localEscapeMonitor {
+      NSEvent.removeMonitor(monitor)
+      localEscapeMonitor = nil
+    }
+    setupEscapeMonitors()
   }
 
   func constructMenu() {
