@@ -85,8 +85,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // System Settings without relaunching) Escape-cancel would silently never
     // work, so poll until trust appears and then reinstall the monitors.
     if !isTrusted {
-      permissionPollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) {
-        [weak self] timer in
+      let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] timer in
         guard AXIsProcessTrusted() else { return }
         timer.invalidate()
         self?.permissionPollTimer = nil
@@ -94,6 +93,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Logger.shared.log(
           "Accessibility permission granted; escape monitors reinstalled.", level: .info)
       }
+      // .common instead of the default mode, so polling keeps firing while the
+      // run loop is tracking a menu or a drag (default-mode timers pause then).
+      RunLoop.main.add(timer, forMode: .common)
+      permissionPollTimer = timer
     }
 
     // Listen for configuration changes
