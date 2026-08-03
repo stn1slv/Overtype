@@ -7,6 +7,7 @@ public enum AXError: Error, LocalizedError {
   case noFocusedElement
   case cannotReadSelectedText
   case cannotWriteSelectedText
+  case modifiersHeldTooLong
 
   public var errorDescription: String? {
     switch self {
@@ -17,6 +18,9 @@ public enum AXError: Error, LocalizedError {
       return "Cannot read selected text. The application might not support Accessibility API."
     case .cannotWriteSelectedText:
       return "Cannot write text. The application might not support Accessibility API."
+    case .modifiersHeldTooLong:
+      return
+        "Modifier keys were held too long. Release Cmd/Option/Control and try again. Nothing was changed."
     }
   }
 }

@@ -29,7 +29,11 @@ public class SelectionReader: SelectionReading {
     Logger.shared.log("Successfully read selection of \(text.count) characters.", level: .info)
     Logger.shared.sanitizedLog(sensitiveText: text, context: "Selected text", level: .debug)
 
-    let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+    // The pid must belong to the element we read from. Asking NSWorkspace for
+    // the frontmost app here would race: dormant-tree recovery can stretch the
+    // lookup above by seconds, during which the frontmost app may have changed.
+    var pid: pid_t = 0
+    AXUIElementGetPid(element, &pid)
     return Selection(text: text, element: element, pid: pid)
   }
 }

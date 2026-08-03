@@ -24,11 +24,16 @@ public class ResponseSanitizer {
     }
 
     // Remove wrapping quotes if the original text did NOT have them,
-    // but the AI aggressively added them.
+    // but the AI aggressively added them. Only strip when the interior contains
+    // no further double quote: text like `"Hi," he said. "Bye."` starts and ends
+    // with a quote yet is not wrapped, and stripping would corrupt it.
     if !originalText.hasPrefix("\"") && !originalText.hasSuffix("\"") {
       if cleanResponse.hasPrefix("\"") && cleanResponse.hasSuffix("\"") && cleanResponse.count >= 2
       {
-        cleanResponse = String(cleanResponse.dropFirst().dropLast())
+        let inner = String(cleanResponse.dropFirst().dropLast())
+        if !inner.contains("\"") {
+          cleanResponse = inner
+        }
       }
     }
 
