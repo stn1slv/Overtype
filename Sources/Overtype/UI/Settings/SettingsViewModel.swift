@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import KeyboardShortcuts
 
 public struct AppOverrideDraft: Identifiable, Equatable {
   // Stable identity independent of bundleID: new rows start with an empty,
@@ -114,14 +115,14 @@ public final class SettingsViewModel: ObservableObject {
     try ConfigStore.shared.save(newConfig)
 
     // Notify application delegate to reload hotkeys dynamically
-    NotificationCenter.default.post(name: Notification.Name("OvertypeConfigDidChange"), object: nil)
+    NotificationCenter.default.post(name: .overtypeConfigDidChange, object: nil)
   }
 
   // MARK: - Providers Management
 
   public func saveProvider(
-    id: String?, name: String, baseURLString: String, defaultModel: String, timeout: Double,
-    apiKey: String
+    id: String?, name: String, kind: ProviderKind, baseURLString: String, defaultModel: String,
+    timeout: Double, apiKey: String
   ) throws {
     // Validation
     let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -150,20 +151,33 @@ public final class SettingsViewModel: ObservableObject {
       url = nil
     }
 
+    // Fallible Keychain work runs BEFORE any published state is mutated, so a
+    // failed store never leaves the in-memory config pointing at a key that
+    // was not written.
     if let existingId = id {
       // Edit mode
       if let index = providers.firstIndex(where: { $0.id == existingId }) {
-        var provider = providers[index]
+        let original = providers[index]
+        var provider = original
+        provider.kind = kind
         provider.baseURL = url
         provider.defaultModel = trimmedModel
         provider.timeoutSeconds = timeout
-        providers[index] = provider
 
         // Save API Key if provided
         if !apiKey.isEmpty {
           let keychainKey = provider.keychainKey ?? "overtype-\(existingId)-key"
-          providers[index].keychainKey = keychainKey
           try KeychainStore.shared.store(key: keychainKey, value: apiKey)
+          provider.keychainKey = keychainKey
+        }
+        providers[index] = provider
+        do {
+          try saveSettings()
+        } catch {
+          // Keep in-memory state in step with the persisted file. The previous
+          // Keychain value cannot be restored; the newly stored key remains.
+          providers[index] = original
+          throw error
         }
       }
     } else {
@@ -179,24 +193,31 @@ public final class SettingsViewModel: ObservableObject {
 
       let newProvider = ProviderConfig(
         id: slug,
-        kind: .openAICompatible,
+        kind: kind,
         baseURL: url,
         defaultModel: trimmedModel,
         timeoutSeconds: timeout,
         keychainKey: keychainKey
       )
       providers.append(newProvider)
+      do {
+        try saveSettings()
+      } catch {
+        // Roll back so neither the in-memory list nor the Keychain keeps a
+        // provider that was never persisted.
+        providers.removeLast()
+        if !apiKey.isEmpty {
+          try? KeychainStore.shared.delete(key: keychainKey)
+        }
+        throw error
+      }
     }
-
-    try saveSettings()
   }
 
   public func deleteProvider(id: String) throws {
     if let index = providers.firstIndex(where: { $0.id == id }) {
       let provider = providers[index]
-      if let keychainKey = provider.keychainKey {
-        try? KeychainStore.shared.delete(key: keychainKey)
-      }
+      let previousActions = actions
       providers.remove(at: index)
 
       // Disable actions referencing the deleted provider
@@ -206,7 +227,20 @@ public final class SettingsViewModel: ObservableObject {
         }
       }
 
-      try saveSettings()
+      do {
+        try saveSettings()
+      } catch {
+        // Keep in-memory state in step with the persisted file.
+        providers.insert(provider, at: index)
+        actions = previousActions
+        throw error
+      }
+
+      // Best-effort Keychain cleanup only AFTER the config save succeeded, so
+      // a failed save cannot leave a still-configured provider without its key.
+      if let keychainKey = provider.keychainKey {
+        try? KeychainStore.shared.delete(key: keychainKey)
+      }
     }
   }
 
@@ -327,8 +361,21 @@ public final class SettingsViewModel: ObservableObject {
 
   public func deleteAction(id: String) throws {
     if let index = actions.firstIndex(where: { $0.id == id }) {
-      actions.remove(at: index)
-      try saveSettings()
+      let removed = actions.remove(at: index)
+      do {
+        try saveSettings()
+      } catch {
+        // Keep in-memory state in step with the persisted file.
+        actions.insert(removed, at: index)
+        throw error
+      }
+      // Hygiene AFTER a successful save: drop the deleted action's persisted
+      // shortcut from the KeyboardShortcuts UserDefaults store so stale entries
+      // do not accumulate. setShortcut(nil) Carbon-unregisters by shortcut
+      // VALUE (no reference counting), which could also hit a surviving action
+      // sharing the combo, so a config-driven re-registration pass runs last.
+      KeyboardShortcuts.setShortcut(nil, for: KeyboardShortcuts.Name(id))
+      NotificationCenter.default.post(name: .overtypeConfigDidChange, object: nil)
     }
   }
 

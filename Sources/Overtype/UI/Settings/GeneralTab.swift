@@ -58,6 +58,7 @@ public struct GeneralTab: View {
           Color.clear.frame(width: 0, height: 0)
           Toggle("Show HUD", isOn: $viewModel.global.showHUD)
             .toggleStyle(.checkbox)
+            .help("Hides the progress indicator during a run. Errors are always shown.")
         }
 
         GridRow {

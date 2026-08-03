@@ -20,9 +20,11 @@ public struct ActionsTab: View {
   @State private var writeStrategy: WriteStrategy = .typing
   @State private var errorMessage: String? = nil
 
-  // Recording target name
-  @State private var recorderName: KeyboardShortcuts.Name = KeyboardShortcuts.Name(
-    "_temp_action_shortcut")
+  // The recorder is ALWAYS bound to this temporary name, never to a live
+  // action's name: recording takes effect (and Carbon-registers) immediately,
+  // so binding to the live name would activate an unsaved shortcut and make
+  // Cancel unable to revert it.
+  private let recorderName = KeyboardShortcuts.Name("_temp_action_shortcut")
 
   public init(viewModel: SettingsViewModel) {
     self.viewModel = viewModel
@@ -91,7 +93,7 @@ public struct ActionsTab: View {
       }
       .listStyle(PlainListStyle())
     }
-    .sheet(isPresented: $isShowingEditSheet) {
+    .sheet(isPresented: $isShowingEditSheet, onDismiss: cleanupRecorder) {
       VStack(spacing: 0) {
         Text(editingAction == nil ? "Add Action" : "Edit Action")
           .font(.headline)
@@ -193,7 +195,6 @@ public struct ActionsTab: View {
     errorMessage = nil
 
     // Reset the temp recorder shortcut
-    recorderName = KeyboardShortcuts.Name("_temp_action_shortcut")
     KeyboardShortcuts.setShortcut(nil, for: recorderName)
 
     isShowingEditSheet = true
@@ -213,16 +214,26 @@ public struct ActionsTab: View {
     writeStrategy = action.writeStrategy
     errorMessage = nil
 
-    // Bind the recorder directly to the existing action ID
-    recorderName = KeyboardShortcuts.Name(action.id)
+    // Seed the temp recorder with the action's current shortcut so the form
+    // shows it; the live action name is never bound (see recorderName).
+    KeyboardShortcuts.setShortcut(action.shortcut?.keyboardShortcut, for: recorderName)
     isShowingEditSheet = true
   }
 
   private func cancelForm() {
-    if editingAction == nil {
-      KeyboardShortcuts.setShortcut(nil, for: recorderName)
-    }
     isShowingEditSheet = false
+  }
+
+  /// Runs on EVERY sheet dismissal (Save, Cancel, Esc). QUIRK WORKAROUND
+  /// (KeyboardShortcuts 1.15.0): `setShortcut(nil, for:)` Carbon-unregisters by
+  /// shortcut VALUE with no reference counting, so clearing the temp name can
+  /// also kill a real action's registration when both hold the same combo
+  /// (e.g. the seeded shortcut in edit mode). Re-registering everything from
+  /// config afterwards makes the config-driven pass the last word, healing any
+  /// Carbon state the recorder disturbed.
+  private func cleanupRecorder() {
+    KeyboardShortcuts.setShortcut(nil, for: recorderName)
+    NotificationCenter.default.post(name: .overtypeConfigDidChange, object: nil)
   }
 
   private func saveAction() {
@@ -238,11 +249,13 @@ public struct ActionsTab: View {
     }
 
     do {
-      let existingId = editingAction?.id
-
-      // Save the action via view model and get assigned action ID
-      let finalID = try viewModel.saveAction(
-        id: existingId,
+      // The saved config is the single source of truth for shortcuts: saving
+      // posts OvertypeConfigDidChange, which registers the hotkey under the
+      // action's own name, and the sheet's onDismiss cleanup re-runs that pass
+      // after clearing the temp recorder. No temp-to-final transfer is needed
+      // (doing one used to Carbon-unregister the freshly registered shortcut).
+      _ = try viewModel.saveAction(
+        id: editingAction?.id,
         title: title,
         enabled: enabled,
         shortcut: actionShortcut,
@@ -255,14 +268,6 @@ public struct ActionsTab: View {
         allowNewlines: allowNewlines,
         writeStrategy: writeStrategy
       )
-
-      // If creating new action, transfer shortcut from temp to final ID in KeyboardShortcuts
-      if existingId == nil, let shortcut = KeyboardShortcuts.getShortcut(for: recorderName) {
-        let finalName = KeyboardShortcuts.Name(finalID)
-        KeyboardShortcuts.setShortcut(shortcut, for: finalName)
-        // Clear the temp recorder shortcut
-        KeyboardShortcuts.setShortcut(nil, for: recorderName)
-      }
 
       isShowingEditSheet = false
     } catch {
