@@ -59,20 +59,9 @@ public class GeminiProvider: AIProvider {
     let response: URLResponse
     do {
       (data, response) = try await urlSession.data(for: urlRequest)
-    } catch is CancellationError {
-      // Escape/Task cancellation before the request resolves surfaces as a
-      // structured-concurrency CancellationError; map it to the clean no-op.
-      throw ProviderError.cancelled
-    } catch let error as URLError {
+    } catch {
       // Distinguish timeout/cancellation from other transport failures (FR-006).
-      switch error.code {
-      case .timedOut:
-        throw ProviderError.timeout
-      case .cancelled:
-        throw ProviderError.cancelled
-      default:
-        throw ProviderError.networkError(error)
-      }
+      throw ProviderError.mapTransportError(error)
     }
 
     guard let httpResponse = response as? HTTPURLResponse else {
@@ -147,12 +136,18 @@ public class GeminiProvider: AIProvider {
   }
 
   /// Concatenates the `text` of every part in a candidate's content, in order.
+  /// Parts flagged `"thought": true` carry model reasoning, not the answer;
+  /// they are skipped so reasoning text is never typed into the user's document.
   static func extractText(from candidate: [String: Any]) -> String {
     guard let content = candidate["content"] as? [String: Any],
       let parts = content["parts"] as? [[String: Any]]
     else {
       return ""
     }
-    return parts.compactMap { $0["text"] as? String }.joined()
+    return
+      parts
+      .filter { ($0["thought"] as? Bool) != true }
+      .compactMap { $0["text"] as? String }
+      .joined()
   }
 }
