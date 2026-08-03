@@ -12,6 +12,16 @@ public struct AppConfig: Codable, Equatable {
     self.providers = providers
     self.actions = actions
   }
+
+  // Tolerant decoding: a hand-edited config.json that omits a section must not
+  // fail the whole decode, because ConfigStore would then fall back to the
+  // default config and the next save would overwrite the user's file.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    global = try container.decodeIfPresent(GeneralConfig.self, forKey: .global) ?? GeneralConfig()
+    providers = try container.decodeIfPresent([ProviderConfig].self, forKey: .providers) ?? []
+    actions = try container.decodeIfPresent([ActionConfig].self, forKey: .actions) ?? []
+  }
 }
 
 public struct GeneralConfig: Codable, Equatable {
@@ -33,6 +43,20 @@ public struct GeneralConfig: Codable, Equatable {
     self.typingChunkSize = typingChunkSize
     self.typingDelayMicroseconds = typingDelayMicroseconds
     self.appTypingOverrides = appTypingOverrides
+  }
+
+  // Tolerant decoding: fields with a natural default fall back to it instead of
+  // failing the decode of the whole config (see AppConfig.init(from:)).
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    typingSpeedMultiplier =
+      try container.decodeIfPresent(Double.self, forKey: .typingSpeedMultiplier) ?? 1.0
+    showHUD = try container.decodeIfPresent(Bool.self, forKey: .showHUD) ?? true
+    typingChunkSize = try container.decodeIfPresent(Int.self, forKey: .typingChunkSize)
+    typingDelayMicroseconds = try container.decodeIfPresent(
+      Int.self, forKey: .typingDelayMicroseconds)
+    appTypingOverrides = try container.decodeIfPresent(
+      [String: AppTypingOverride].self, forKey: .appTypingOverrides)
   }
 }
 
@@ -74,6 +98,18 @@ public struct ProviderConfig: Codable, Equatable {
     self.defaultModel = defaultModel
     self.timeoutSeconds = timeoutSeconds
     self.keychainKey = keychainKey
+  }
+
+  // Tolerant decoding: `id`, `kind`, and `defaultModel` stay required (a provider
+  // without them is unusable); everything else has a safe default.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    kind = try container.decode(ProviderKind.self, forKey: .kind)
+    baseURL = try container.decodeIfPresent(URL.self, forKey: .baseURL)
+    defaultModel = try container.decode(String.self, forKey: .defaultModel)
+    timeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .timeoutSeconds) ?? 30.0
+    keychainKey = try container.decodeIfPresent(String.self, forKey: .keychainKey)
   }
 }
 
@@ -135,5 +171,26 @@ public struct ActionConfig: Codable, Equatable {
     self.maxInputCharacters = maxInputCharacters
     self.allowNewlines = allowNewlines
     self.writeStrategy = writeStrategy
+  }
+
+  // Tolerant decoding: identity, provider reference, and the prompts stay
+  // required (an action without them is unusable); everything else has a safe
+  // default matching the memberwise initializer.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    title = try container.decode(String.self, forKey: .title)
+    enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    shortcut = try container.decodeIfPresent(ActionShortcut.self, forKey: .shortcut)
+    providerID = try container.decode(String.self, forKey: .providerID)
+    model = try container.decodeIfPresent(String.self, forKey: .model)
+    systemPrompt = try container.decode(String.self, forKey: .systemPrompt)
+    userPromptTemplate = try container.decode(String.self, forKey: .userPromptTemplate)
+    temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.0
+    maxInputCharacters =
+      try container.decodeIfPresent(Int.self, forKey: .maxInputCharacters) ?? 5000
+    allowNewlines = try container.decodeIfPresent(Bool.self, forKey: .allowNewlines) ?? false
+    writeStrategy =
+      try container.decodeIfPresent(WriteStrategy.self, forKey: .writeStrategy) ?? .typing
   }
 }
