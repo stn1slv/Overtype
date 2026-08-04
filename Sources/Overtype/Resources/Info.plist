@@ -10,10 +10,23 @@
     <string>Overtype</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <!-- Fallback values. scripts/build-app.sh overwrites these in the bundle
+         copy at build time, but the two keys are resolved independently:
+           - the version is stamped only when OVERTYPE_VERSION is set or HEAD is
+             tagged, so an ordinary local build keeps the value below;
+           - the build is stamped from the commit count only when the full
+             history is available, so the 0 below survives both when git is
+             absent (a source tarball) and in a shallow clone, where the count
+             would be truncated.
+         An ordinary local build in a full clone therefore reads as <version
+         below> (<commit count>), which is intentionally shaped like a release:
+         distinguishing local builds from releases is not a goal (see specs/006,
+         Edge Cases). Keep the version below in step with the newest release tag
+         so an unstamped build never claims a version that does not exist. -->
     <key>CFBundleShortVersionString</key>
-    <string>1.1</string>
+    <string>1.2.1</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>0</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSMultipleInstancesProhibited</key>

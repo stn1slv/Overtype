@@ -25,6 +25,56 @@ else
     echo "Warning: Info.plist not found in Sources/Overtype/Resources/"
 fi
 
+# Stamp the version the app reports about itself, so Settings > General can never
+# show a version that disagrees with the release the user installed.
+#
+# ORDERING CONSTRAINT: this must run after the plist is copied and BEFORE
+# codesign. codesign seals Info.plist; editing it afterwards invalidates the
+# signature and macOS refuses to launch the bundle. Do not move this below the
+# signing step. Verify with `codesign --verify --deep --strict Overtype.app`.
+#
+# Only the copy inside the bundle is touched. Sources/Overtype/Resources/Info.plist
+# stays untouched, so its values remain the fallback for an unstamped build.
+if [ -f "$APP_BUNDLE/Contents/Info.plist" ]; then
+    # Version: explicit override, else the exact tag at HEAD, else leave as-is.
+    STAMP_VERSION="${OVERTYPE_VERSION:-}"
+    if [ -z "$STAMP_VERSION" ]; then
+        # `|| true` because the repo may be untagged here and `set -e` is on.
+        GIT_TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
+        STAMP_VERSION="$GIT_TAG"
+    fi
+    # Normalise both sources the same way, so `OVERTYPE_VERSION=v1.2.1` and the
+    # tag `v1.2.1` produce the identical stamped value.
+    STAMP_VERSION="${STAMP_VERSION#v}"
+    # Build: commit count, else leave the value in the plist as-is. Two cases
+    # leave it as-is: no git metadata at all (a source tarball), and a shallow
+    # clone, where `rev-list --count` returns a truncated count with exit 0 and
+    # would therefore stamp a plausible but wrong number. The release workflow
+    # sets fetch-depth: 0 so the real count is available there.
+    if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)" = "true" ]; then
+        echo "Warning: shallow clone; commit count would be truncated"
+        STAMP_BUILD=""
+    else
+        STAMP_BUILD="$(git rev-list --count HEAD 2>/dev/null || true)"
+    fi
+
+    if [ -n "$STAMP_VERSION" ]; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $STAMP_VERSION" \
+            "$APP_BUNDLE/Contents/Info.plist"
+        echo "Stamped version $STAMP_VERSION"
+    else
+        echo "No tag or OVERTYPE_VERSION; keeping the version declared in Info.plist"
+    fi
+
+    if [ -n "$STAMP_BUILD" ]; then
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $STAMP_BUILD" \
+            "$APP_BUNDLE/Contents/Info.plist"
+        echo "Stamped build $STAMP_BUILD"
+    else
+        echo "Build not stamped; keeping the value declared in Info.plist"
+    fi
+fi
+
 # Copy every SwiftPM resource bundle (our own and dependencies') next to the
 # executable. KeyboardShortcuts crashes on first use of its Recorder view
 # because Bundle.module hard-fails when KeyboardShortcuts_KeyboardShortcuts.bundle

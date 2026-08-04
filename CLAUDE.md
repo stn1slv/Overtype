@@ -17,7 +17,7 @@ each target delegates to the SPM/`swift` commands below. Run `make help` to list
 
 - Build (debug): `swift build`
 - Build (release): `swift build -c release`
-- Build the distributable `.app` bundle (release build + Info.plist + ad-hoc codesign): `./scripts/build-app.sh` — produces `Overtype.app` in the repo root.
+- Build the distributable `.app` bundle (release build + Info.plist + ad-hoc codesign): `./scripts/build-app.sh` — produces `Overtype.app` in the repo root. The script also stamps the version into the bundle's `Info.plist`, editing only the bundle copy and never `Sources/Overtype/Resources/Info.plist`. The two keys resolve independently: `CFBundleShortVersionString` is stamped only when `$OVERTYPE_VERSION` is set or `HEAD` is tagged (otherwise the checked-in fallback stands), while `CFBundleVersion` is stamped from `git rev-list --count HEAD` only when the full history is available. In a shallow clone or with no git metadata the script warns and leaves the fallback in place, so the build reports `0` rather than a truncated count; the release workflow's `fetch-depth: 0` exists to keep the real count available. A local build in a full clone therefore reads as the fallback version paired with a real commit count. The stamping must stay **before** the `codesign` call, which seals `Info.plist`. [Source: specs/006-settings-version-display]
 - Run all tests: `swift test`
 - Run one test class: `swift test --filter ConfigStoreTests`
 - Run one test method: `swift test --filter ResponseSanitizerTests/testSomeName`
@@ -61,7 +61,11 @@ gate and `sanitizedLog()`, which redacts selected text and model output unless
 debug logging is on. `UI/Settings/SettingsWindow.swift` is the SwiftUI settings
 window: all three tabs are functional (as of specs/003-gui-settings). The
 General tab manages global preferences (Launch at Login, HUD, typing cadence,
-per-app typing overrides); the Providers tab adds/edits/deletes providers and
+per-app typing overrides) and ends with a read-only `Version` row showing
+`Support/AppVersion.swift`'s formatted bundle version, e.g. `1.2.1 (20)`, or
+`Unknown` when the metadata is unreadable; it is selectable but deliberately
+outside `SettingsViewModel` so it never joins draft state or the save action.
+The Providers tab adds/edits/deletes providers and
 stores their API keys in the Keychain; the Actions tab adds/edits/deletes actions
 and records global hotkeys via an interactive recorder with conflict detection.
 A `SettingsViewModel` handles draft state, slug-based id generation, and atomic

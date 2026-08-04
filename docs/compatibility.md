@@ -42,6 +42,32 @@ If an application is rejecting input:
 3. Try increasing `typingDelayMicroseconds` (or lowering `typingSpeedMultiplier`) in `config.json` if characters are being dropped during insertion (especially common in heavily-scripted web rich-text editors like Google Docs).
 4. If a specific app drops or **reorders** characters (a race between the keystroke burst and the app's async input), add a per-app override under `appTypingOverrides` keyed by its bundle identifier, using a small `typingChunkSize` (for example `1`) and a larger `typingDelayMicroseconds`. When you run an action, the target app's bundle id is written to the log (the `Effective typing config ... bundleID ...` line, visible in Console.app under subsystem `com.github.stn1slv.Overtype`); you can also find it with `osascript -e 'id of app "App Name"'`.
 
+## Version Display Acceptance
+
+The Settings > General tab shows the version the running build declares about
+itself, and `scripts/build-app.sh` stamps that version into the bundle. Bundle
+reading, the settings row and the shell stamping are system-boundary work, so
+they are verified by the procedure in
+`specs/006-settings-version-display/quickstart.md`, not by mocks. The formatting
+rules are pure logic and are covered by `AppVersionTests`
+(`swift test --filter AppVersionTests`).
+
+Verified 2026-08-04 against the ad-hoc local build at commit count 20:
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| 2 | Stamped release build | `OVERTYPE_VERSION=1.2.1 ./scripts/build-app.sh` declares `1.2.1` / build `20` | 2026-08-04 pass |
+| 3 | Signature and repo invariants | `codesign --verify` passes; tracked `Info.plist` byte-identical after a build; `CFBundleIdentifier`, `LSUIElement`, `LSMinimumSystemVersion` unchanged | 2026-08-04 pass (plist checksum identical before/after) |
+| 4 | Unstamped local build | Falls back to the checked-in `1.2.1`; build is still the commit count | 2026-08-04 pass |
+| 5 | General tab shows the version | Labelled `Version` row at the end of the tab, value `1.2.1 (20)`, not editable, unaffected by Save | pending (manual, needs a launched app) |
+| 6 | Existing General tab settings unaffected | Launch at login, cadence, HUD, overrides all load/change/save as before | pending (manual) |
+| 7 | Appearance and long values | Legible in Light and Dark; `1.3.0-beta.1` shown in full without clipping | pending (manual) |
+| 8 | Unknown path | With `CFBundleShortVersionString` deleted, the tab opens and shows `Version Unknown` | pending (manual; covered automatically by `AppVersionTests`) |
+| 9 | Zero network activity | No outbound connections while the General tab is displayed | pending (manual) |
+
+Rows 5 through 9 require a launched application and a human observer. Execute them
+and replace the `pending` entries before the next release.
+
 ## Provider Acceptance
 
 System-boundary provider behavior (a live network call) is verified by a manual

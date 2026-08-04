@@ -17,6 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          # Load-bearing: scripts/build-app.sh stamps CFBundleVersion from
+          # `git rev-list --count HEAD`, which needs the full history. The
+          # script refuses to stamp from a shallow clone rather than ship a
+          # truncated count, so lowering this does not corrupt the build
+          # identifier, it downgrades it to the fallback declared in
+          # Info.plist and the release then reports build 0.
           fetch-depth: 0
 
       - name: Select Xcode
@@ -24,7 +30,9 @@ jobs:
 
       - name: Build .app bundle
         run: |
-          ./scripts/build-app.sh
+          # Same expression used below for the zip name and the cask, so the
+          # version shown inside the app cannot diverge from the release assets.
+          OVERTYPE_VERSION="${GITHUB_REF_NAME#v}" ./scripts/build-app.sh
           
       - name: Zip .app bundle
         run: |
