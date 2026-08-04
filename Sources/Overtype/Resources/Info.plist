@@ -10,10 +10,14 @@
     <string>Overtype</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <!-- Fallback values only. scripts/build-app.sh overwrites both keys in the
+         bundle copy at build time: the version from the git tag, the build from
+         the commit count. A build identifier of 0 therefore means "not stamped",
+         i.e. a local development build. -->
     <key>CFBundleShortVersionString</key>
-    <string>1.1</string>
+    <string>1.2.1</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>0</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSMultipleInstancesProhibited</key>

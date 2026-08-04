@@ -6,6 +6,11 @@ public struct GeneralTab: View {
   @State private var isSaved = false
   @State private var errorMessage: String? = nil
 
+  // Read once from the bundle, deliberately outside SettingsViewModel and outside
+  // @State: the version is read-only information, so it must not become draft
+  // state or take part in saving preferences.
+  private let versionText = AppVersion.current.displayString
+
   public init(viewModel: SettingsViewModel) {
     self.viewModel = viewModel
   }
@@ -185,6 +190,19 @@ public struct GeneralTab: View {
               .foregroundColor(.red)
               .font(.caption)
           }
+        }
+      }
+
+      Section {
+        HStack {
+          Text("Version")
+            .foregroundColor(.secondary)
+          // Selectable so it can be pasted into a bug report. No pasteboard code
+          // of ours is involved: the copy is performed by the system on the
+          // user's explicit command, so Constitution Principle I still holds.
+          Text(versionText)
+            .textSelection(.enabled)
+          Spacer()
         }
       }
     }
