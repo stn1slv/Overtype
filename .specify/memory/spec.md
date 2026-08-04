@@ -51,6 +51,22 @@ Bootstrapped 2026-08-02 from the first archived feature (Gemini Model Support).
 - **US2 (P1) — Disable launch at login.** A user unchecks the box; the app
   deregisters as a login item and no longer starts automatically.
 
+### Reliable Selection Reading (Dormant Accessibility Trees) `[Source: specs/005-teams-ax-recovery/spec.md]`
+
+- **US1 (P1) — Fix text in an app whose accessibility tree is dormant.** After
+  Microsoft Teams restarts (or updates, or the Mac reboots), a user selects text
+  and invokes an action. Instead of failing instantly with "Cannot find the
+  focused text element" until an external assistive tool touches the app,
+  Overtype detects the dormant tree, wakes it, retries briefly, and completes
+  the transformation.
+- **US2 (P2) — No regression for well-behaved apps.** In apps whose accessibility
+  support works immediately (native apps, Outlook, warmed-up Teams), latency and
+  behavior are unchanged and no wake-up flags are set on the target application.
+- **US3 (P3) — Failures still fail fast and clearly.** With nothing selected, or
+  in a genuinely unsupported app, the run ends with the same specific error as
+  before, after a bounded retry window; Escape during that window cancels
+  immediately.
+
 ### GUI Configuration Settings `[Source: specs/003-gui-settings]`
 
 - **US1 (P1) — Manage AI providers and credentials.** A user adds/edits/deletes
@@ -122,10 +138,17 @@ original 001 identifier is shown in parentheses.
   ongoing tasks that does not steal keyboard focus.
 - **FR-021** (orig FR-008): The system MUST sanitize AI responses to strip
   markdown and unnecessary quotes when appropriate.
-- **FR-022** (orig FR-009): The system MUST allow users to cancel in-flight AI
-  requests seamlessly (e.g., Escape).
+- **FR-022** (orig FR-009): The system MUST allow users to cancel in-flight runs
+  seamlessly (e.g., Escape). This includes cancellation during the dormant-tree
+  recovery window (FR-035), which MUST end the run promptly with no modification
+  to the target document.
+  `[Source: specs/001-overtype/spec.md -> FR-009; specs/005-teams-ax-recovery/spec.md -> FR-006]`
 - **FR-023** (orig FR-010): The system MUST NOT silently fail; all errors MUST be
-  presented to the user clearly.
+  presented to the user clearly. Exhausting the dormant-tree recovery window
+  (FR-035) MUST end the run with the same specific, typed errors as a
+  single-shot lookup failure — no new silent failure modes and no indefinite
+  waiting.
+  `[Source: specs/001-overtype/spec.md -> FR-010; specs/005-teams-ax-recovery/spec.md -> FR-007]`
 
 #### Launch at Login `[Source: specs/002-launch-at-login]`
 
@@ -169,6 +192,37 @@ parentheses.
   (speed multiplier, chunk size, delay, HUD visibility) and per-application
   overrides (add/remove bundle ids with custom delay/chunk size).
 
+#### Reliable Selection Reading (Dormant Accessibility Trees) `[Source: specs/005-teams-ax-recovery/spec.md]`
+
+IDs renumbered on archival to avoid collision; original 005 identifier in
+parentheses. Cancellation (orig FR-006) and the unchanged error surface (orig
+FR-007) were consolidated into FR-022 and FR-023 rather than restated here.
+
+- **FR-035** (orig FR-001): When the existing focused-element lookup strategies
+  find no element with a live selection, the system MUST attempt a bounded
+  recovery instead of failing immediately.
+- **FR-036** (orig FR-002): The recovery MUST wake the target application's
+  accessibility support by setting the two known assistive-client flags on the
+  target application, and MUST ignore the reported result codes of those calls,
+  because at least one target application (Microsoft Teams) reports an error
+  while honoring the call. This site MUST carry an inline comment naming the
+  quirk (Principle III).
+- **FR-037** (orig FR-003): The recovery MUST retry the focused-element lookup,
+  querying the application element first, up to 24 attempts at 150 ms intervals.
+  Ordering and interval come from the 2026-07-31 axprobe findings (binding
+  conclusion #3); the attempt count was raised from that report's 12 after the
+  2026-08-02 acceptance run showed a truly cold Teams populates the selection
+  attribute only about 2.7 seconds after the wake.
+- **FR-038** (orig FR-004): The recovery MUST apply a bounded messaging timeout
+  (2 seconds) to accessibility queries issued during the recovery, so a hung
+  target application cannot stall a run beyond the hard timeout.
+- **FR-039** (orig FR-005): The fast path MUST remain unchanged: if the existing
+  strategies find the selection, no flags are set, no retries occur, and no
+  latency is added.
+- **FR-040** (orig FR-008): The empirical basis and the per-application outcome
+  MUST be recorded in `docs/compatibility.md` (Teams dormant-tree behavior, the
+  wake-up quirk, and the re-verified acceptance results).
+
 ### Key Entities
 
 #### Gemini Model Support `[Source: specs/004-gemini-provider]`
@@ -196,6 +250,18 @@ No new entities — the GUI edits the existing base entities. Concrete
 `ProviderConfig` (= Provider Configuration), `ActionConfig` (= Action
 Configuration), and the Keychain Secret bound to a `ProviderConfig.keychainKey`.
 
+#### Reliable Selection Reading (Dormant Accessibility Trees) `[Source: specs/005-teams-ax-recovery/spec.md]`
+
+No persistent entities, configuration schema, or stored state. Two runtime-only
+concepts, both function-local to the selection read:
+
+- **Recovery attempt**: a bounded sequence (wake flags once, then up to 24
+  lookup retries at 150 ms) executed at most once per run.
+- **Wake-up flags**: the two assistive-client attributes that signal "an
+  assistive client is present" to the target application —
+  `AXEnhancedUserInterface` (honored by Teams-like apps despite the reported
+  error) and `AXManualAccessibility` (honored by Electron apps).
+
 ### Edge Cases and Error Handling
 
 #### Gemini Model Support `[Source: specs/004-gemini-provider]`
@@ -210,10 +276,16 @@ Configuration), and the Keychain Secret bound to a `ProviderConfig.keychainKey`.
 
 #### Overtype Foundation `[Source: specs/001-overtype]`
 
-- Target app loses focus while a request is in flight → the write is aborted to
-  avoid replacing text in the wrong window.
+- Target app loses focus, or quits, while a request is in flight → the write is
+  aborted to avoid replacing text in the wrong window. This holds equally when
+  the app quits or loses frontmost status during the dormant-tree recovery
+  window; the existing pre-write context re-check still applies.
+  `[Source: specs/001-overtype/spec.md; specs/005-teams-ax-recovery/spec.md]`
 - Selecting text in an unsupported app (e.g., terminal emulator) → a clear
-  "unsupported" error, not a silent failure.
+  "unsupported" error, not a silent failure. An app that never exposes a
+  selection ends the bounded retry window in that same specific error; it is not
+  retried indefinitely.
+  `[Source: specs/001-overtype/spec.md; specs/005-teams-ax-recovery/spec.md]`
 - User is physically holding modifier keys when replacement starts → the app
   waits for physical modifier release before typing.
 - AI wraps output in quotation marks the original lacked → the response sanitizer
@@ -236,6 +308,13 @@ Configuration), and the Keychain Secret bound to a `ProviderConfig.keychainKey`.
   pointing to settings.
 - Malformed `config.json` → app falls back to defaults gracefully; the settings
   window offers to reset to defaults.
+
+#### Reliable Selection Reading (Dormant Accessibility Trees) `[Source: specs/005-teams-ax-recovery/spec.md]`
+
+- The wake-up call reports an error even when it works → the reported error code
+  must not be treated as failure evidence (verified quirk; Principle III).
+- Repeated invocations while a retry window is active → the existing
+  cancel-previous-run behavior applies unchanged.
 
 ## Success Criteria
 
@@ -299,6 +378,48 @@ parentheses.
 - **SC-018** (orig SC-004): A hotkey conflict during recording is flagged
   immediately and duplicate registration is prevented.
 
+#### Reliable Selection Reading (Dormant Accessibility Trees) `[Source: specs/005-teams-ax-recovery/spec.md]`
+
+IDs renumbered on archival to avoid collision; original 005 identifier in
+parentheses.
+
+- **SC-019** (orig SC-001): After restarting Microsoft Teams, the first Overtype
+  run against a Teams selection succeeds without any external warm-up, in at
+  most 3 seconds more than a warm run.
+- **SC-020** (orig SC-002): Runs against applications that already work (Outlook,
+  native apps, warmed Teams) show no measurable latency increase (within normal
+  variance) and no behavioral change.
+- **SC-021** (orig SC-003): With nothing selected, the failure message is
+  unchanged; in apps with an awake tree it stays instant, and in the cold-tree
+  case the added delay stays within the bounded recovery window (about four
+  seconds).
+- **SC-022** (orig SC-004): Escape pressed during the recovery window cancels the
+  run in under one second, with the target document untouched.
+- **SC-023** (orig SC-005): The recorded manual acceptance for Teams in
+  `docs/compatibility.md` passes from a cold Teams restart, twice in a row.
+
+## Assumptions
+
+Recorded per feature; only assumptions that still govern the implemented system
+are kept.
+
+#### Reliable Selection Reading (Dormant Accessibility Trees) `[Source: specs/005-teams-ax-recovery/spec.md]`
+
+- Teams' accessibility tree is dormant after a process restart, and setting the
+  assistive-client flag wakes it even though the call reports an error
+  (2026-08-02 diagnosis; re-verified by the manual acceptance procedure).
+- The retry configuration (24 x 150 ms, app-element first) is sufficient for the
+  Teams and VS Code class of applications; no per-app tuning is provided. VS
+  Code's recorded 13-second outlier is out of reach by design — a second press
+  covers it.
+- Setting the wake-up flags only on the failure path is an acceptable trade-off
+  for avoiding known side effects (window-resize glitches in some Electron apps)
+  on apps that do not need them.
+- No configuration surface is added: the recovery is automatic and invisible;
+  constants live in code, matching the tested values.
+- Writing (typing) behavior is out of scope for this recovery; it changes only
+  how the selection is found and read.
+
 ---
 
 ### Revision: Archival 2026-08-02
@@ -325,3 +446,19 @@ parentheses.
   entities (referenced, not duplicated). Merged as `[Source: specs/003-gui-settings]`
   sub-blocks. With this run, the project's four features (001, 002, 003, 004) are
   all archived.
+
+### Revision: Archival 2026-08-04 (Reliable Selection Reading / Dormant AX Trees)
+
+- Reason: Archived `specs/005-teams-ax-recovery`. IDs renumbered to FR-035–FR-040
+  and SC-019–SC-023; original 005 IDs annotated inline. Two of the feature's
+  requirements were **consolidated instead of appended**: orig FR-006
+  (cancellation during the retry window) folded into FR-022 and orig FR-007
+  (unchanged typed-error surface) folded into FR-023; both entries now carry two
+  item-level source refs and their legacy 001 refs were upgraded in place. Two
+  edge cases (context change mid-run; app that never exposes a selection) folded
+  into the existing 001 entries for the same failure modes. A top-level
+  `## Assumptions` section was created, matching the spec template's ordering.
+- Recorded attempt count is **24 x 150 ms**, per the feature's FR-003, its plan,
+  `docs/compatibility.md`, and `AXHelpers.recoveryAttempts`. The feature spec's
+  Key Entities / Assumptions prose and its `data-model.md` still say the
+  pre-amendment 12; those were left untouched as a stale-source note.

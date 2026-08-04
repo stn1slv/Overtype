@@ -2,6 +2,34 @@
 
 ## Merged Features Log
 
+### Reliable Selection Reading (Dormant Accessibility Trees) — 2026-08-04
+**Branch:** 005-teams-ax-recovery
+**Spec:** specs/005-teams-ax-recovery
+
+_Note: FR/SC IDs renumbered to FR-035–FR-040 / SC-019–SC-023 in memory `spec.md`.
+Orig FR-006 and FR-007 were not appended: they were consolidated into the
+existing FR-022 and FR-023, which now carry two source refs each._
+
+**What was added:**
+- US1 (P1): a cold-restarted Microsoft Teams recovers automatically — wake the
+  dormant accessibility tree, retry the lookup within a bounded window, and
+  complete the run instead of failing instantly with `noFocusedElement`.
+- US2 (P2): the fast path is untouched; no wake flags are set and no latency is
+  added for apps whose lookup already succeeds.
+- US3 (P3): recovery exhaustion still ends in today's specific typed errors,
+  within a bounded window, and Escape cancels promptly during the window.
+
+**New Components:**
+- No new files or dependencies. `Support/AXHelpers.swift` gains
+  `getFocusedElement(wakeDormantTree:)` plus private
+  `wakeDormantAccessibilityTree(appElement:)` and `retryFocusLookup(appElement:)`;
+  `Core/SelectionReader.swift` is the single opt-in call site.
+- Docs: `docs/compatibility.md` dormant-tree entry (wake-flag quirk, the
+  misleading `.notImplemented` return code, the bounded recovery window).
+
+**Tasks Completed:** 10/14 tasks (T007, T009, T011, T013 are manual acceptance
+items requiring the user at the machine; they gate release, not archival).
+
 ### GUI Configuration Settings — 2026-08-02
 **Branch:** 003-gui-settings
 **Spec:** specs/003-gui-settings

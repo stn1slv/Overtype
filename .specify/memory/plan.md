@@ -105,8 +105,41 @@ Sources/Overtype/
   `emptyResponse`); `Providers/ProviderRegistry.swift` (one line wiring
   `.gemini` → `GeminiProvider`).
 
+#### Reliable Selection Reading / Dormant AX Trees `[Source: specs/005-teams-ax-recovery]`
+
+- **Approach**: A bounded recovery path inside the existing selection read,
+  entered **only** after all five existing lookup strategies fail. No new files,
+  no new dependency, no configuration surface.
+- **Edits**: `Sources/Overtype/Support/AXHelpers.swift` —
+  `getFocusedElement(wakeDormantTree: Bool = false)` plus two private helpers,
+  `wakeDormantAccessibilityTree(appElement:)` and `retryFocusLookup(appElement:)`;
+  `Sources/Overtype/Core/SelectionReader.swift` — the single opt-in call site
+  (`wakeDormantTree: true`).
+- **Recovery sequence**: set `AXEnhancedUserInterface` and
+  `AXManualAccessibility` to true on the target app element, discarding both
+  returned `AXError` values; `AXUIElementSetMessagingTimeout(2.0)` on the app
+  element and a fresh system-wide element; then 24 attempts at 150 ms,
+  `try Task.checkCancellation()` first in each iteration, querying the app
+  element's focused element before the system-wide one. An element with a
+  non-empty selection returns immediately; a selection-less element is kept as a
+  fallback candidate while retries continue. Constants live in
+  `AXHelpers.recoveryAttempts` / `recoveryMessagingTimeoutSeconds`.
+- **Design decision — recovery is read-path only.** `ActionEngine`'s pre-write
+  context re-check deliberately keeps single-shot behavior: by write time the
+  tree is provably warm, and Principle II requires a changed context to abort
+  fast rather than after seconds of retries.
+- **Verification**: system-boundary code, so no mock-based unit tests
+  (Principle VIII). Validated by `specs/005-teams-ax-recovery/quickstart.md`
+  scenarios B–E, recorded in `docs/compatibility.md`. **Manual acceptance is
+  PARTIAL**: the single-press cold-Teams retest at 24 attempts, the native-app
+  fast-path check, the failure-timing/Escape scenario, and the regression sweep
+  are outstanding (tasks T007, T009, T011, T013).
+
 ### Configuration
 
+- No configuration is added by the dormant-tree recovery: it is automatic and
+  invisible, and its constants are compile-time values bound to the tested
+  configuration (deliberately not exposed, to avoid untested combinations).
 - New provider kind wire value `"gemini"` in `config.json`. A Gemini provider
   block may omit `baseURL` (defaults to the Google v1beta base). The shipped
   default config is unchanged; Gemini is enabled via a documented README recipe.
@@ -133,8 +166,30 @@ Sources/Overtype/
 - `Tests/OvertypeTests/AppConfigTests.swift`: `kind: gemini` config decode.
 - Manual acceptance (`specs/004-gemini-provider/quickstart.md`, A1–A8) recorded
   in `docs/compatibility.md`. **Live acceptance is PENDING** and gates release.
+- Dormant-tree recovery adds **no** unit tests by design (system-boundary code,
+  no new pure logic); the existing suite must stay green. Its verification is the
+  manual procedure above.
 
 ## Known Gotchas (from research)
+
+- **A dormant accessibility tree is not a permission problem.** After Microsoft
+  Teams restarts, every AX query returns `noValue` in ~12 ms and the tree stays
+  dormant until an assistive client announces itself. Diagnose this before
+  suspecting a code regression or a revoked Accessibility grant.
+- **AX return codes are not evidence in either direction.** Setting
+  `AXEnhancedUserInterface` on Teams returns `.notImplemented` (-25208) yet takes
+  effect (read-back flips to true and the tree activates). This is the mirror of
+  the known Teams write quirk, where a set call returns success and changes
+  nothing. Never gate on the returned `AXError` at these sites.
+- **`AXManualAccessibility` covers a different app family.** Teams rejects it
+  (`attributeUnsupported`); Electron apps (VS Code, Claude desktop) honor it.
+  Setting both flags covers both families at no cost.
+- **Wake flags have side effects, so they stay on the failure path.**
+  `AXEnhancedUserInterface` is the flag VoiceOver sets and has historically
+  caused window-resize/zoom glitches in some Electron apps. It is set only for
+  apps that are already unusable with Overtype, at most once per run. The state
+  persists in the target process until that app restarts; no cleanup is
+  attempted, which is the intended assistive-client behavior.
 
 - **Endpoint colon must not be percent-encoded.** The `:generateContent` action
   suffix is built by string concatenation, not `URL.appendingPathComponent`,
@@ -164,3 +219,12 @@ converge stages with no violations. Outstanding: the manual acceptance
 
 - Reason: Archived `specs/003-gui-settings`. Added the Settings GUI increment and
   pinned the `KeyboardShortcuts` dependency version (1.15.0). No new dependency.
+
+### Revision: Archival 2026-08-04 (Reliable Selection Reading / Dormant AX Trees)
+
+- Reason: Archived `specs/005-teams-ax-recovery`. Added the dormant-tree recovery
+  increment, its four research gotchas, and a "no configuration added" note. No
+  new dependency and no new module — the change is contained in
+  `Support/AXHelpers.swift` with a one-line opt-in from `Core/SelectionReader.swift`,
+  so the Project Structure tree is unchanged. Manual acceptance is recorded as
+  PARTIAL (T007, T009, T011, T013 outstanding).

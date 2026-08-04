@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-02
 
-**Status**: Draft
+**Status**: Completed
 
 **Input**: User description: "Reliable focused-element lookup for apps with dormant accessibility trees (Microsoft Teams). After the Teams process restarts, all accessibility queries return no value instantly, so Overtype's single-shot focused-element lookup fails with noFocusedElement in ~12 ms. Empirically confirmed on 2026-08-02: setting the assistive-client flags on the target app wakes the tree (the call reports an error yet takes effect). Fix: when the existing lookup strategies find nothing, escalate once per run: set the wake-up flags ignoring reported error codes, apply a messaging timeout, and retry the app-element-first lookup up to 12 attempts at 150 ms intervals (the empirically validated configuration from the 2026-07-31 axprobe findings). The fast path for well-behaved apps must remain untouched. Escalation must respect cancellation and the hard timeout. Manual acceptance: restart Teams, confirm recovery; record in docs/compatibility.md."
 
