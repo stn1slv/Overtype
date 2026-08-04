@@ -18,9 +18,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           # Load-bearing: scripts/build-app.sh stamps CFBundleVersion from
-          # `git rev-list --count HEAD`. A shallow clone returns a truncated
-          # count with exit 0, so lowering this ships a wrong build number
-          # silently. It is also needed for the tag to be visible.
+          # `git rev-list --count HEAD`, which needs the full history. The
+          # script refuses to stamp from a shallow clone rather than ship a
+          # truncated count, so lowering this does not corrupt the build
+          # identifier, it downgrades it to the fallback declared in
+          # Info.plist and the release then reports build 0.
           fetch-depth: 0
 
       - name: Select Xcode

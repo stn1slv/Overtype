@@ -102,15 +102,25 @@ on the user's explicit command, so no application code touches the pasteboard.
   the spec's assumptions. Rejected.
 
 **Reversed 2026-08-04, after code review**: the `HStack` was replaced by
-`LabeledContent`. Two independent reviewers raised the same objection, and it is
-better founded than the original reasoning. The consistency argument above weighed
-the *file's* idiom; FR-006 actually requires consistency of the rendered *layout*
-with the other labelled rows, and a bare `HStack` puts the label at a different
-x-offset from the trailing-aligned Grid labels above it. `LabeledContent` also
-fixes two defects the original had: a long value truncated instead of wrapping
-(paired here with `.fixedSize(horizontal: false, vertical: true)`), and VoiceOver
-announced the label and value as two unrelated elements. One extra layout idiom is
-a smaller cost than three concrete defects.
+`LabeledContent`, which fixes two concrete defects the original had: a long value
+truncated instead of wrapping (paired here with
+`.fixedSize(horizontal: false, vertical: true)`), and VoiceOver announced the
+label and value as two unrelated elements. Two extra layout idioms in one file is
+a smaller cost than two defects.
+
+**Correction, same day, after a second review round**: the reversal was first
+justified partly on the grounds that `LabeledContent` would align this label with
+the trailing-aligned `Grid` rows above it, satisfying FR-006's "laid out
+consistently with the other labelled rows". **That justification was wrong.**
+SwiftUI sizes `Form` label columns per `Section` — this is stated in an existing
+comment on the Grid itself, which is precisely why the Grid exists — and the
+version row is its own `Section`, so its label column is sized to "Version" alone
+and does not line up with the Grid's. The reversal still stands on the wrapping
+and VoiceOver grounds, but not on alignment. FR-006's consistency requirement is
+met in the weaker sense that the row uses the platform's standard labelled-row
+control rather than a bespoke layout. Whether the visual result is acceptable is
+a question for the pending manual acceptance run (quickstart steps 5 and 7); no
+reviewer has yet seen it rendered.
 
 ## D4. Build-time stamping mechanism
 

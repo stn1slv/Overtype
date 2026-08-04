@@ -194,10 +194,11 @@ public struct GeneralTab: View {
         }
       }
 
-      // LabeledContent rather than a hand-built HStack: it gives the same
-      // trailing-aligned label treatment as the rest of the Form (FR-006), lets
-      // a long value wrap instead of widening the window, and exposes the label
-      // and value to VoiceOver as one associated element.
+      // LabeledContent rather than a hand-built HStack: it lets a long value
+      // wrap instead of truncating, and exposes the label and value to VoiceOver
+      // as one associated element. It does NOT align this label with the Grid
+      // above: as the comment on that Grid says, Form sizes label columns per
+      // Section, and this row is its own Section.
       Section {
         LabeledContent("Version") {
           // Selectable so it can be pasted into a bug report. No pasteboard code

@@ -50,7 +50,7 @@ reading, the settings row and the shell stamping are system-boundary work, so
 they are verified by the procedure in
 `specs/006-settings-version-display/quickstart.md`, not by mocks. The formatting
 rules are pure logic and are covered by `AppVersionTests`
-(`swift test --filter AppVersionTests`, 12 cases).
+(`swift test --filter AppVersionTests`).
 
 Verified 2026-08-04 against the ad-hoc local build at commit count 20:
 
