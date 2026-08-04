@@ -58,6 +58,46 @@ final class AppVersionTests: XCTestCase {
     }
   }
 
+  // MARK: - Info dictionary extraction
+
+  func testReadsBothKeysFromInfoDictionary() {
+    let version = AppVersion(infoDictionary: [
+      "CFBundleShortVersionString": "1.2.1",
+      "CFBundleVersion": "20",
+    ])
+    XCTAssertEqual(version, AppVersion(shortVersion: "1.2.1", build: "20"))
+    XCTAssertEqual(version.displayString, "1.2.1 (20)")
+  }
+
+  func testNilInfoDictionaryYieldsUnknown() {
+    XCTAssertEqual(AppVersion(infoDictionary: nil).displayString, "Unknown")
+  }
+
+  func testEmptyInfoDictionaryYieldsUnknown() {
+    XCTAssertEqual(AppVersion(infoDictionary: [:]).displayString, "Unknown")
+  }
+
+  func testNonStringValuesAreTreatedAsAbsent() {
+    // A hand-edited plist could declare these as <integer>; the cast fails and
+    // the value must be treated as missing rather than crashing or printing a
+    // description like "Optional(20)".
+    let version = AppVersion(infoDictionary: [
+      "CFBundleShortVersionString": 121,
+      "CFBundleVersion": 20,
+    ])
+    XCTAssertNil(version.shortVersion)
+    XCTAssertNil(version.build)
+    XCTAssertEqual(version.displayString, "Unknown")
+  }
+
+  func testNonStringBuildStillShowsTheVersion() {
+    let version = AppVersion(infoDictionary: [
+      "CFBundleShortVersionString": "1.2.1",
+      "CFBundleVersion": 20,
+    ])
+    XCTAssertEqual(version.displayString, "1.2.1")
+  }
+
   func testDisplayStringNeverContainsEmptyParentheses() {
     for version in [nil, "", "   ", "1.2.1"] {
       for build in [nil, "", "   ", "20"] {

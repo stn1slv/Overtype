@@ -101,6 +101,17 @@ on the user's explicit command, so no application code touches the pasteboard.
 - *A separate "About Overtype" window or menu item*: explicitly out of scope in
   the spec's assumptions. Rejected.
 
+**Reversed 2026-08-04, after code review**: the `HStack` was replaced by
+`LabeledContent`. Two independent reviewers raised the same objection, and it is
+better founded than the original reasoning. The consistency argument above weighed
+the *file's* idiom; FR-006 actually requires consistency of the rendered *layout*
+with the other labelled rows, and a bare `HStack` puts the label at a different
+x-offset from the trailing-aligned Grid labels above it. `LabeledContent` also
+fixes two defects the original had: a long value truncated instead of wrapping
+(paired here with `.fixedSize(horizontal: false, vertical: true)`), and VoiceOver
+announced the label and value as two unrelated elements. One extra layout idiom is
+a smaller cost than three concrete defects.
+
 ## D4. Build-time stamping mechanism
 
 **Decision**: In `scripts/build-app.sh`, immediately after `Info.plist` is copied

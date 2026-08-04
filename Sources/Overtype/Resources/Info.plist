@@ -10,10 +10,18 @@
     <string>Overtype</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-    <!-- Fallback values only. scripts/build-app.sh overwrites both keys in the
-         bundle copy at build time: the version from the git tag, the build from
-         the commit count. A build identifier of 0 therefore means "not stamped",
-         i.e. a local development build. -->
+    <!-- Fallback values. scripts/build-app.sh overwrites these in the bundle
+         copy at build time, but the two keys are resolved independently:
+           - the version is stamped only when OVERTYPE_VERSION is set or HEAD is
+             tagged, so an ordinary local build keeps the value below;
+           - the build is stamped from the commit count whenever git metadata is
+             available, so the 0 below survives only when git is absent entirely
+             (for example a source tarball).
+         A local build therefore usually reads as <version below> (<commit
+         count>), which is intentionally shaped like a release: distinguishing
+         local builds from releases is not a goal (see specs/006, Edge Cases).
+         Keep the version below in step with the newest release tag so an
+         unstamped build never claims a version that does not exist. -->
     <key>CFBundleShortVersionString</key>
     <string>1.2.1</string>
     <key>CFBundleVersion</key>

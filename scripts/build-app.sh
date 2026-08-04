@@ -47,7 +47,15 @@ if [ -f "$APP_BUNDLE/Contents/Info.plist" ]; then
     # tag `v1.2.1` produce the identical stamped value.
     STAMP_VERSION="${STAMP_VERSION#v}"
     # Build: commit count, else leave as-is (no git metadata available).
-    STAMP_BUILD="$(git rev-list --count HEAD 2>/dev/null || true)"
+    # A shallow clone would return a truncated count with exit 0, so warn rather
+    # than stamp a fabricated build number. The release workflow sets
+    # fetch-depth: 0 precisely to avoid this.
+    if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)" = "true" ]; then
+        echo "Warning: shallow clone; commit count is truncated, not stamping the build"
+        STAMP_BUILD=""
+    else
+        STAMP_BUILD="$(git rev-list --count HEAD 2>/dev/null || true)"
+    fi
 
     if [ -n "$STAMP_VERSION" ]; then
         /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $STAMP_VERSION" \

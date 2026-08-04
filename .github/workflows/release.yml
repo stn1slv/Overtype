@@ -17,6 +17,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          # Load-bearing: scripts/build-app.sh stamps CFBundleVersion from
+          # `git rev-list --count HEAD`. A shallow clone returns a truncated
+          # count with exit 0, so lowering this ships a wrong build number
+          # silently. It is also needed for the tag to be visible.
           fetch-depth: 0
 
       - name: Select Xcode

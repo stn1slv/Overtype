@@ -20,17 +20,26 @@ public struct AppVersion: Equatable {
     self.build = build
   }
 
+  /// Extracts the two keys from a bundle's Info dictionary.
+  ///
+  /// Separate from `current` so this extraction is unit-testable without
+  /// mocking `Bundle`. A key declared as anything other than a string (a
+  /// hand-edited `<integer>`, say) fails the cast and is treated as absent,
+  /// which `displayString` then handles like a missing key.
+  public init(infoDictionary: [String: Any]?) {
+    self.init(
+      shortVersion: infoDictionary?["CFBundleShortVersionString"] as? String,
+      build: infoDictionary?["CFBundleVersion"] as? String
+    )
+  }
+
   /// The version of the running application, read from its bundle metadata.
   ///
   /// Both keys are absent when the executable runs outside an app bundle (a raw
   /// `swift run`, or the test runner), which is why `displayString` has to cope
   /// with missing values rather than assume them.
   public static var current: AppVersion {
-    let info = Bundle.main.infoDictionary
-    return AppVersion(
-      shortVersion: info?["CFBundleShortVersionString"] as? String,
-      build: info?["CFBundleVersion"] as? String
-    )
+    AppVersion(infoDictionary: Bundle.main.infoDictionary)
   }
 
   /// The exact text shown on the Settings General tab. Never empty.

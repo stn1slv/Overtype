@@ -6,9 +6,10 @@ public struct GeneralTab: View {
   @State private var isSaved = false
   @State private var errorMessage: String? = nil
 
-  // Read once from the bundle, deliberately outside SettingsViewModel and outside
-  // @State: the version is read-only information, so it must not become draft
-  // state or take part in saving preferences.
+  // Read from the bundle each time this view struct is initialised, which is
+  // cheap and always yields the same value for a given build. Deliberately
+  // outside SettingsViewModel and outside @State: the version is read-only
+  // information, so it must not become draft state or take part in saving.
   private let versionText = AppVersion.current.displayString
 
   public init(viewModel: SettingsViewModel) {
@@ -193,16 +194,18 @@ public struct GeneralTab: View {
         }
       }
 
+      // LabeledContent rather than a hand-built HStack: it gives the same
+      // trailing-aligned label treatment as the rest of the Form (FR-006), lets
+      // a long value wrap instead of widening the window, and exposes the label
+      // and value to VoiceOver as one associated element.
       Section {
-        HStack {
-          Text("Version")
-            .foregroundColor(.secondary)
+        LabeledContent("Version") {
           // Selectable so it can be pasted into a bug report. No pasteboard code
           // of ours is involved: the copy is performed by the system on the
           // user's explicit command, so Constitution Principle I still holds.
           Text(versionText)
             .textSelection(.enabled)
-          Spacer()
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
     }
