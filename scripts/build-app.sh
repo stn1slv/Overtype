@@ -41,8 +41,11 @@ if [ -f "$APP_BUNDLE/Contents/Info.plist" ]; then
     if [ -z "$STAMP_VERSION" ]; then
         # `|| true` because the repo may be untagged here and `set -e` is on.
         GIT_TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
-        STAMP_VERSION="${GIT_TAG#v}"
+        STAMP_VERSION="$GIT_TAG"
     fi
+    # Normalise both sources the same way, so `OVERTYPE_VERSION=v1.2.1` and the
+    # tag `v1.2.1` produce the identical stamped value.
+    STAMP_VERSION="${STAMP_VERSION#v}"
     # Build: commit count, else leave as-is (no git metadata available).
     STAMP_BUILD="$(git rev-list --count HEAD 2>/dev/null || true)"
 

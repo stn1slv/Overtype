@@ -20,8 +20,12 @@ the General tab shows always matches the build the user actually installed
 **Released version** (`CFBundleShortVersionString`), first match wins:
 
 1. `OVERTYPE_VERSION`, if set and non-empty.
-2. The exact tag at `HEAD` with a leading `v` removed, if `HEAD` is tagged.
+2. The exact tag at `HEAD`, if `HEAD` is tagged.
 3. Otherwise: leave the value already in the copied plist unchanged.
+
+Whichever of 1 or 2 supplies the value, a single leading `v` is removed from it.
+Both sources are normalised identically, so `OVERTYPE_VERSION=v1.2.1` and the tag
+`v1.2.1` stamp the same value.
 
 **Build identifier** (`CFBundleVersion`):
 
