@@ -9,6 +9,14 @@ echo "Building executable..."
 swift build -c release
 
 echo "Creating App Bundle structure..."
+# Build the bundle from scratch every time. Reusing an existing one lets stale
+# artifacts survive a rebuild, which both hides packaging regressions (a
+# leftover resource bundle satisfies the guard below even when the current
+# build produced none) and breaks codesign outright (any leftover entry beside
+# `Contents` fails with "unsealed contents present in the bundle root").
+# $APP_BUNDLE is a literal derived from $APP_NAME and is a gitignored build
+# artifact, the same one `make clean` removes.
+rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
@@ -100,7 +108,9 @@ shopt -u nullglob
 #
 # KeyboardShortcuts is named explicitly rather than checking only what the loop
 # above copied: if SwiftPM stopped emitting the bundle entirely, a loop over
-# "$BIN_DIR"/*.bundle would match nothing and assert nothing.
+# "$BIN_DIR"/*.bundle would match nothing and assert nothing. This only holds
+# because the bundle is rebuilt from scratch above; without that, a leftover
+# copy from an earlier build would satisfy the check and hide the regression.
 KS_BUNDLE="KeyboardShortcuts_KeyboardShortcuts.bundle"
 if [ ! -d "$APP_BUNDLE/Contents/Resources/$KS_BUNDLE" ]; then
     echo "Error: $KS_BUNDLE is missing from $APP_BUNDLE/Contents/Resources." >&2
