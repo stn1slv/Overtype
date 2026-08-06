@@ -16,22 +16,40 @@ public struct ProvidersTab: View {
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
 
-  /// Kinds selectable in the form. Anthropic and Ollama are unimplemented stubs
-  /// in ProviderRegistry and stay hidden; a hand-edited config using one of
-  /// them still shows its current kind so editing does not silently change it.
+  /// Kinds selectable in the form. Ollama is still an unimplemented stub in
+  /// ProviderRegistry and stays hidden; a hand-edited config using it still
+  /// shows its current kind so editing does not silently change it.
   private var selectableKinds: [ProviderKind] {
-    var kinds: [ProviderKind] = [.openAICompatible, .gemini]
+    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic]
     if let current = editingProvider?.kind, !kinds.contains(current) {
       kinds.append(current)
     }
     return kinds
   }
 
+  /// Hint shown in the empty Base URL field.
+  ///
+  /// The hints are not all the same kind of statement. Gemini and Anthropic fall
+  /// back to a documented default host when the field is blank, so theirs are
+  /// prefixed "Default:" and leaving the field empty is a valid choice. An
+  /// OpenAI-compatible provider has no fallback — `OpenAICompatibleProvider`
+  /// throws `.invalidURL` when `baseURL` is nil — so its hint is an example to
+  /// copy, and leaving the field empty fails at run time. Ollama is not
+  /// implemented and its hint is only a placeholder for the hidden kind.
+  private func baseURLPlaceholder(for kind: ProviderKind) -> String {
+    switch kind {
+    case .openAICompatible: return "https://api.openai.com/v1"
+    case .gemini: return "Default: generativelanguage.googleapis.com"
+    case .anthropic: return "Default: api.anthropic.com"
+    case .ollama: return "http://localhost:11434"
+    }
+  }
+
   private func kindLabel(_ kind: ProviderKind) -> String {
     switch kind {
     case .openAICompatible: return "OpenAI-compatible"
     case .gemini: return "Gemini"
-    case .anthropic: return "Anthropic (not implemented)"
+    case .anthropic: return "Anthropic"
     case .ollama: return "Ollama (not implemented)"
     }
   }
@@ -112,9 +130,7 @@ public struct ProvidersTab: View {
 
             TextField(
               "Base URL", text: $baseURLString,
-              prompt: Text(
-                kind == .gemini
-                  ? "Default: generativelanguage.googleapis.com" : "https://api.openai.com/v1"))
+              prompt: Text(baseURLPlaceholder(for: kind)))
 
             TextField("Default Model", text: $defaultModel)
 

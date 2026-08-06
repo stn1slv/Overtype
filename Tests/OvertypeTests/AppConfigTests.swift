@@ -50,6 +50,32 @@ final class AppConfigTests: XCTestCase {
     }
   }
 
+  func testAnthropicProviderConfigDecodes() {
+    let json = #"""
+      {
+        "id": "anthropic",
+        "kind": "anthropic",
+        "defaultModel": "claude-haiku-4-5",
+        "timeoutSeconds": 30,
+        "keychainKey": "overtype-anthropic-key"
+      }
+      """#
+    guard let data = json.data(using: .utf8) else {
+      XCTFail("Failed to convert Anthropic provider JSON to data")
+      return
+    }
+
+    do {
+      let provider = try JSONDecoder().decode(ProviderConfig.self, from: data)
+      XCTAssertEqual(provider.kind, .anthropic)
+      XCTAssertEqual(provider.id, "anthropic")
+      XCTAssertEqual(provider.defaultModel, "claude-haiku-4-5")
+      XCTAssertEqual(provider.keychainKey, "overtype-anthropic-key")
+    } catch {
+      XCTFail("Failed to decode Anthropic ProviderConfig: \(error)")
+    }
+  }
+
   // MARK: - Tolerant decoding (missing keys fall back to defaults instead of
   // failing the whole config decode)
 

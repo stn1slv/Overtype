@@ -139,3 +139,36 @@ release.
 | A6 | Unknown model | Specific API error (unknown model); selection unchanged | pending |
 | A7 | Safety block | Specific "blocked" error with reason; selection unchanged | pending |
 | A8 | Network down | Specific network error; selection unchanged | pending |
+
+### Anthropic (native `/v1/messages`)
+
+Pure-logic parsing, reasoning filtering, and error mapping are covered by
+`AnthropicProviderTests` (`swift test --filter AnthropicProviderTests`). The live
+procedure below is defined in `specs/007-anthropic-provider/quickstart.md`.
+
+**Status: PENDING** — not yet executed against a live key. Run the steps below
+with a real Anthropic API key and replace this line with the date and result
+before release.
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| A1 | Happy path | Selection replaced by Claude output; Reading → Thinking → Writing HUD | pending |
+| A2 | Escape cancels mid-run | Run cancelled; selection unchanged | pending |
+| A3 | Context change before write | Write aborted (`contextChanged`); selection unchanged | pending |
+| A4 | Missing key | Specific "API Key is missing" error before any network call; selection unchanged | pending |
+| A5 | Invalid key | Specific HTTP 401 error; selection unchanged | pending |
+| A6 | Unknown model | Specific HTTP 404 error; selection unchanged | pending |
+| A7 | Declined response | Specific "blocked" error naming the reason; selection unchanged | pending |
+| A8 | Network down | Specific network error; selection unchanged | pending |
+| A9 | Reasoning-tier smoke check (model `claude-opus-5`) | Only answer text written; no stray prose in the document | pending |
+| A10 | Rate limit retry (429/529) | HUD shows `Retrying...` once, then success or a specific error; selection unchanged | pending |
+
+> **A9 does not verify the reasoning filter, despite appearances.** Overtype
+> deliberately sends no `thinking` field, so it cannot request summarised
+> reasoning; on the Claude 5 tier `thinking.display` defaults to `"omitted"` and
+> reasoning blocks arrive with empty text. A broken allow-list would concatenate
+> empty strings and the document would still look right, so A9 passes either way.
+> The guarantee that model reasoning never reaches the user's document comes from
+> `AnthropicProviderTests`, which feeds synthetic bodies containing non-empty
+> `thinking` / `redacted_thinking` / unrecognised block types. Run that suite as
+> the gate; treat A9 as an end-to-end smoke check only.

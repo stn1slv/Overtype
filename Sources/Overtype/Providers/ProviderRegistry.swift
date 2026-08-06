@@ -18,8 +18,7 @@ public class ProviderRegistry {
       case .openAICompatible:
         providers[config.id] = OpenAICompatibleProvider(config: config)
       case .anthropic:
-        // To be implemented in US2
-        break
+        providers[config.id] = AnthropicProvider(config: config)
       case .ollama:
         // To be implemented in US3
         break

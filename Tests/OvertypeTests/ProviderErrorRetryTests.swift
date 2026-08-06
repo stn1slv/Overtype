@@ -79,6 +79,16 @@ final class ProviderErrorRetryTests: XCTestCase {
     }
   }
 
+  func testAnthropicOverloadedIsRetryable() {
+    // Anthropic returns 529 `overloaded_error` for transient capacity pressure.
+    // AnthropicProvider adds no retry logic of its own — it relies entirely on
+    // 529 falling inside the 500...599 range checked above. Asserted explicitly
+    // because 529 is a non-standard status that no other provider emits, so a
+    // narrowing of that range would otherwise break Anthropic retries silently.
+    XCTAssertTrue(
+      ProviderError.apiError(statusCode: 529, message: "overloaded").isRetryable)
+  }
+
   // MARK: - Deterministic failures are not retried
 
   func testClientErrorsAreNotRetryable() {
