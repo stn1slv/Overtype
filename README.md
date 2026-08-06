@@ -7,7 +7,7 @@ It securely modifies text via macOS Accessibility APIs, completely bypassing the
 ## Features
 
 - **Clipboard Isolation**: Overtype never touches `NSPasteboard`. It reads and types text strictly through the macOS Accessibility API (`AXUIElement` & `CGEvent`).
-- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano) and Google Gemini. (Anthropic and Ollama support coming soon).
+- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano), Google Gemini, and Anthropic Claude. (Ollama support coming soon).
 - **Global Hotkeys**: Highlight text in any application (like MS Teams or Apple Notes), hit a shortcut (e.g. ⌃⌥⌘G), and watch the text get magically replaced inline.
 - **Privacy First**: By default, sensitive text is never written to disk; only standard, sanitized application logs are recorded. Unredacted text is logged only if you explicitly enable debug logging.
 
@@ -164,6 +164,56 @@ configuration, no rebuild required.
 
 The shipped default configuration does not include a Gemini provider, so a fresh
 install adds no extra provider or shortcut until you add the block above.
+
+### Using Anthropic Claude
+
+Overtype talks to Anthropic natively (it calls the Messages API directly; your
+text is never sent to any intermediary). You can add it from **Settings →
+Providers**, where "Anthropic" now appears in the Kind picker, or by editing
+configuration directly. Either way, no rebuild is required.
+
+1. Get an API key from the [Anthropic Console](https://console.anthropic.com/settings/keys).
+
+2. Add an Anthropic provider block to the `"providers"` array in
+   `~/Library/Application Support/Overtype/config.json`:
+
+   ```json
+   {
+     "id": "anthropic",
+     "kind": "anthropic",
+     "defaultModel": "claude-haiku-4-5",
+     "timeoutSeconds": 30.0,
+     "retryDelaySeconds": 0.5,
+     "keychainKey": "overtype-anthropic-key"
+   }
+   ```
+
+   The `"baseURL"` may be omitted; Overtype defaults to
+   `https://api.anthropic.com/v1/`.
+
+   `claude-haiku-4-5` is recommended as the default because Overtype rewrites a
+   selection inline while you wait, so speed matters more than raw capability
+   here. Any Claude model works — set a heavier one per action if you want.
+
+3. Store your key in the macOS Keychain under the exact `keychainKey` name. The
+   in-app Settings key field currently manages the OpenAI key only, so store the
+   Anthropic key from Terminal:
+
+   ```sh
+   security add-generic-password -a "$USER" -s "overtype-anthropic-key" -w "YOUR_ANTHROPIC_API_KEY" -U
+   ```
+
+4. Point an action at the provider by setting its `"providerID"` to `"anthropic"`
+   (optionally set a per-action `"model"` to override the default). The key is
+   sent in the `x-api-key` request header and never written to `config.json`,
+   logs, or the URL.
+
+> **Note:** an action's `"temperature"` is **ignored** for Anthropic runs.
+> Current Claude models reject that parameter outright, so Overtype does not
+> send it. The setting still applies to OpenAI and Gemini providers.
+
+The shipped default configuration does not include an Anthropic provider, so a
+fresh install adds no extra provider or shortcut until you add the block above.
 
 ## Security & Privacy Constraints
 

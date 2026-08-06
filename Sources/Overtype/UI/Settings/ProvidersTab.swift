@@ -20,18 +20,30 @@ public struct ProvidersTab: View {
   /// in ProviderRegistry and stay hidden; a hand-edited config using one of
   /// them still shows its current kind so editing does not silently change it.
   private var selectableKinds: [ProviderKind] {
-    var kinds: [ProviderKind] = [.openAICompatible, .gemini]
+    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic]
     if let current = editingProvider?.kind, !kinds.contains(current) {
       kinds.append(current)
     }
     return kinds
   }
 
+  /// Hint shown in the empty Base URL field. Each implemented kind names the
+  /// host it defaults to when the field is left blank, so a user can tell that
+  /// leaving it empty is a valid choice rather than an omission.
+  private func baseURLPlaceholder(for kind: ProviderKind) -> String {
+    switch kind {
+    case .openAICompatible: return "https://api.openai.com/v1"
+    case .gemini: return "Default: generativelanguage.googleapis.com"
+    case .anthropic: return "Default: api.anthropic.com"
+    case .ollama: return "http://localhost:11434"
+    }
+  }
+
   private func kindLabel(_ kind: ProviderKind) -> String {
     switch kind {
     case .openAICompatible: return "OpenAI-compatible"
     case .gemini: return "Gemini"
-    case .anthropic: return "Anthropic (not implemented)"
+    case .anthropic: return "Anthropic"
     case .ollama: return "Ollama (not implemented)"
     }
   }
@@ -112,9 +124,7 @@ public struct ProvidersTab: View {
 
             TextField(
               "Base URL", text: $baseURLString,
-              prompt: Text(
-                kind == .gemini
-                  ? "Default: generativelanguage.googleapis.com" : "https://api.openai.com/v1"))
+              prompt: Text(baseURLPlaceholder(for: kind)))
 
             TextField("Default Model", text: $defaultModel)
 
