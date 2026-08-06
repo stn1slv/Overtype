@@ -46,20 +46,27 @@ public struct ProvidersTab: View {
     }
   }
 
-  /// Prompt for the API key field.
+  /// Placeholder shown inside the empty API key field.
   ///
   /// Ollama is the one kind that normally needs no credential, because the
   /// service runs on the user's own machine. A prompt that reads as mandatory
   /// would make the normal setup look broken, so it is marked optional here
   /// (specs/008-ollama-provider FR-005). An empty value is accepted for every
   /// kind by `SettingsViewModel.saveProvider`; only the wording differs.
+  ///
+  /// LAYOUT CONSTRAINT: this wording must stay out of the field's *label*. A
+  /// macOS `Form` sizes one shared label column to the widest label in it, so
+  /// carrying this text as the label made the column wider than the 450pt
+  /// sheet: labels were clipped off the left edge and every field was cut off
+  /// on the right. Keep the label a short constant and vary only the
+  /// placeholder, exactly as the Base URL field above does.
   private func apiKeyPrompt(for kind: ProviderKind) -> String {
     if kind == .ollama {
       return editingProvider == nil
-        ? "API Key (optional, not needed for a local service)"
-        : "API Key (optional; leave empty to keep current)"
+        ? "Optional, not needed for a local service"
+        : "Optional, leave empty to keep current"
     }
-    return editingProvider == nil ? "API Key" : "API Key (Leave empty to keep current)"
+    return editingProvider == nil ? "" : "Leave empty to keep current"
   }
 
   private func kindLabel(_ kind: ProviderKind) -> String {
@@ -167,7 +174,9 @@ public struct ProvidersTab: View {
                 + "Only transient failures (network errors, timeouts, rate limits, "
                 + "server errors) are retried. Set to 0 to retry immediately.")
 
-            SecureField(apiKeyPrompt(for: kind), text: $apiKey)
+            SecureField(
+              "API Key", text: $apiKey,
+              prompt: Text(apiKeyPrompt(for: kind)))
           }
         }
         .padding()
