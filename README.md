@@ -149,13 +149,17 @@ configuration, no rebuild required.
    The `"baseURL"` may be omitted; Overtype defaults to
    `https://generativelanguage.googleapis.com/v1beta/`.
 
-3. Store your key in the macOS Keychain under the exact `keychainKey` name. The
-   in-app Settings key field currently manages the OpenAI key only, so store the
-   Gemini key from Terminal:
+3. Store your key in the macOS Keychain under the exact `keychainKey` name.
+   Adding the provider through Settings → Providers does this for you; the
+   Terminal command below is the manual equivalent if you are editing
+   `config.json` by hand:
 
    ```sh
-   security add-generic-password -a "$USER" -s "overtype-gemini-key" -w "YOUR_GEMINI_API_KEY" -U
+   security add-generic-password -a "overtype-gemini-key" -w "YOUR_GEMINI_API_KEY" -U
    ```
+
+   The `-a` (account) value must match `keychainKey` exactly — Overtype looks the
+   item up by account, not by service.
 
 4. Point an action at the provider by setting its `"providerID"` to `"gemini"`
    (optionally set a per-action `"model"` to override the default). The key is
@@ -201,11 +205,19 @@ configuration directly. Either way, no rebuild is required.
    `config.json` by hand:
 
    ```sh
-   security add-generic-password -a "overtype-anthropic-key" -s "Overtype" -w "YOUR_ANTHROPIC_API_KEY" -U
+   security add-generic-password -a "overtype-anthropic-key" -w "YOUR_ANTHROPIC_API_KEY" -U
    ```
 
    The `-a` (account) value must match `keychainKey` exactly — Overtype looks the
    item up by account, not by service.
+
+   > **Approve the Keychain prompt before your first real run.** An item created
+   > this way trusts no application, so the first time Overtype reads it macOS
+   > shows an authorization dialog. That dialog takes keyboard focus, which
+   > destroys your text selection and aborts the run. Trigger the action once on
+   > throwaway text, choose **Always Allow**, and subsequent runs are silent.
+   > Keys added through Settings → Providers are written by Overtype itself and
+   > never show this prompt.
 
 4. Point an action at the provider by setting its `"providerID"` to `"anthropic"`
    (optionally set a per-action `"model"` to override the default). The key is

@@ -27,9 +27,15 @@ public struct ProvidersTab: View {
     return kinds
   }
 
-  /// Hint shown in the empty Base URL field. Each implemented kind names the
-  /// host it defaults to when the field is left blank, so a user can tell that
-  /// leaving it empty is a valid choice rather than an omission.
+  /// Hint shown in the empty Base URL field.
+  ///
+  /// The hints are not all the same kind of statement. Gemini and Anthropic fall
+  /// back to a documented default host when the field is blank, so theirs are
+  /// prefixed "Default:" and leaving the field empty is a valid choice. An
+  /// OpenAI-compatible provider has no fallback — `OpenAICompatibleProvider`
+  /// throws `.invalidURL` when `baseURL` is nil — so its hint is an example to
+  /// copy, and leaving the field empty fails at run time. Ollama is not
+  /// implemented and its hint is only a placeholder for the hidden kind.
   private func baseURLPlaceholder(for kind: ProviderKind) -> String {
     switch kind {
     case .openAICompatible: return "https://api.openai.com/v1"

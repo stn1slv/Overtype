@@ -142,7 +142,7 @@ specific error and the selection is unchanged (quickstart A4–A8, A10).
 - [X] T018 [P] Update `docs/privacy.md` to state that selected text is sent to Anthropic's endpoint (`api.anthropic.com`) when an Anthropic action runs.
 - [X] T019 [P] Add an `### Anthropic (native /v1/messages)` subsection under `## Provider Acceptance` in `docs/compatibility.md`, following the existing Gemini block: a paragraph naming what `AnthropicProviderTests` already covers and pointing at `specs/007-anthropic-provider/quickstart.md`, a `**Status: PENDING**` line, and an A1–A10 result table whose IDs match the quickstart one-for-one.
 - [X] T020 Run the PR checklist: `rg NSPasteboard Sources/` returns no match outside comments; audit that no secret, selected text, or model output is logged at `info`+; confirm the two deliberate omissions (`temperature`, and any reasoning/effort field) each carry an explanatory comment; confirm FR-015 by checking `AnthropicProvider` issues exactly one URL and adds no telemetry or update-ping call.
-- [ ] T021 Execute the manual acceptance procedure in `specs/007-anthropic-provider/quickstart.md` (A1–A10) against a real supported app with a real API key and record outcomes in `docs/compatibility.md`. **A9 (reasoning never written) must not be skipped** — it is the only live check of FR-008, and A1–A8 all still pass with a broken filter.
+- [ ] T021 Execute the manual acceptance procedure in `specs/007-anthropic-provider/quickstart.md` (A1–A10) against a real supported app with a real API key and record outcomes in `docs/compatibility.md`. _(Correction 2026-08-06: this task originally said A9 "must not be skipped — it is the only live check of FR-008". That was wrong. Because the provider sends no `thinking` field it cannot request summarised reasoning, and on the Claude 5 tier `thinking.display` defaults to `"omitted"`, so reasoning blocks arrive empty and A9 passes whether the filter works or not. FR-008 is gated by `AnthropicProviderTests`, which feeds synthetic non-empty reasoning blocks; A9 is an end-to-end smoke check only. See the A9 caveat in `quickstart.md`.)_
 - [X] T022 Run the full `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test` from repo root and confirm green.
 
 ---
@@ -197,7 +197,7 @@ Task: "T002 Add success-path unit tests in Tests/OvertypeTests/AnthropicProvider
 1. Phase 1: Setup (green baseline).
 2. Phase 2: nothing to do.
 3. Phase 3: US1 (provider + endpoint + request + parse + reasoning filter + registry + tests).
-4. **STOP and VALIDATE**: run quickstart A1 and A9 with a real key.
+4. **STOP and VALIDATE**: run quickstart A1 with a real key (and A9 as a smoke check — see its caveat; the reasoning filter itself is gated by the unit tests).
 5. This is a shippable MVP: Anthropic works for the happy path and never writes reasoning.
 
 ### Incremental Delivery

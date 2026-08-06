@@ -185,23 +185,31 @@ final class AnthropicProviderTests: XCTestCase {
     let body = AnthropicProvider.requestBody(
       model: "claude-haiku-4-5", systemPrompt: "sys", userPrompt: "user")
     XCTAssertNil(body["thinking"])
-    XCTAssertNil(body["effort"])
+    // `effort` is only ever nested inside `output_config`, never top-level, so
+    // asserting the container is the meaningful check.
     XCTAssertNil(body["output_config"])
   }
 
   func testRequestBodyPutsSystemPromptAtTopLevel() {
     // A {"role": "system"} entry inside `messages` is a validation error on this
     // API; the system prompt must be a sibling of `messages`.
+    //
+    // The two prompts use distinct sentinels on purpose: with both set to the
+    // literal "user", a role/content swap would still satisfy every assertion.
     let body = AnthropicProvider.requestBody(
-      model: "claude-haiku-4-5", systemPrompt: "sys", userPrompt: "user")
-    XCTAssertEqual(body["system"] as? String, "sys")
+      model: "claude-haiku-4-5",
+      systemPrompt: "SYSTEM-SENTINEL",
+      userPrompt: "USER-SENTINEL")
+    XCTAssertEqual(body["system"] as? String, "SYSTEM-SENTINEL")
 
     guard let messages = body["messages"] as? [[String: Any]] else {
       return XCTFail("expected a messages array, got \(String(describing: body["messages"]))")
     }
     XCTAssertEqual(messages.count, 1)
     XCTAssertEqual(messages.first?["role"] as? String, "user")
-    XCTAssertEqual(messages.first?["content"] as? String, "user")
+    XCTAssertEqual(messages.first?["content"] as? String, "USER-SENTINEL")
+    // The system prompt must not leak into the message turn.
+    XCTAssertNil(messages.first?["system"])
   }
 
   func testRequestBodyAlwaysCarriesRequiredFields() {

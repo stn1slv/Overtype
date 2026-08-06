@@ -30,6 +30,24 @@ public class AnthropicProvider: AIProvider {
   /// transport timeout; enough headroom for models that spend part of the same
   /// budget on reasoning (this cap covers reasoning *and* answer text together);
   /// and within every current model's output ceiling.
+  ///
+  /// KNOWN RESIDUAL RISK, accepted deliberately: because this cap covers
+  /// reasoning and answer text together, a reasoning-tier model working on a
+  /// long selection can spend most of the budget reasoning and return a
+  /// mid-sentence answer. `parseResponseText` treats a non-empty
+  /// `stop_reason: "max_tokens"` as a success, so that truncated text is written
+  /// over the user's selection with no error shown.
+  ///
+  /// Note this is NOT the same situation as `GeminiProvider`, whose equivalent
+  /// comment justifies the same choice on the grounds that it "sends no
+  /// maxOutputTokens, so this only occurs at the model's own default cap". This
+  /// provider does set a cap, and sets it well below every model's ceiling, so
+  /// truncation is reachable here where it is not there. The behaviour is kept
+  /// for consistency with the other two providers and because the failure needs
+  /// both a reasoning model and a long selection to bite; changing it to a typed
+  /// error would diverge from OpenAI/Gemini and contradict the spec's stated
+  /// edge-case handling, so it belongs in a spec revision rather than a silent
+  /// change here.
   private static let maxTokens = 8192
 
   /// `stop_reason` values that mean the model finished normally. Anything else

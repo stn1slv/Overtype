@@ -68,8 +68,17 @@ picker), or edit `~/Library/Application Support/Overtype/config.json` directly:
 Store the key (Settings does this for you; this is the manual equivalent):
 
 ```sh
-security add-generic-password -a "overtype-anthropic-key" -s "Overtype" -w
+security add-generic-password -a "overtype-anthropic-key" -w
 ```
+
+The `-a` (account) value must match `keychainKey`; `KeychainStore` queries by
+`kSecAttrAccount` and applies no service constraint.
+
+> **Approve the Keychain prompt before running A1.** An item created this way
+> trusts no application, so Overtype's first read raises an authorization dialog
+> that takes focus and destroys the selection — which would fail A1, A4 and A5
+> for the wrong reason. Trigger the action once on throwaway text, choose
+> **Always Allow**, then start the procedure.
 
 Then point an action at it by setting that action's `providerID` to `anthropic`.
 
@@ -96,12 +105,28 @@ The `#` IDs map one-for-one to the rows in that table.
 | A6 | Unknown model | Set `defaultModel` to `claude-does-not-exist`, trigger | Specific HTTP 404 error; selection unchanged |
 | A7 | Declined response | Send a prompt the model declines | Specific "blocked" error naming the reason; selection unchanged |
 | A8 | Network down | Disable networking, trigger the action | Specific network error after the single retry; selection unchanged |
-| A9 | **Reasoning not written** | Set the action's model to `claude-opus-5` (which reasons by default) and run A1 | Only the answer text is written. **No reasoning prose appears in the document** |
+| A9 | Reasoning-tier smoke check | Set the action's model to `claude-opus-5` (which reasons by default) and run A1 | Only the answer text is written; no stray prose in the document. **See the caveat below — this cannot fully verify FR-008** |
 | A10 | Rate limit retry | If a 429 can be provoked, trigger the action | HUD shows `Retrying...` once, then either success or a specific error; selection unchanged |
 
-**A9 is the item that must not be skipped.** It is the only live check of FR-008,
-and its failure mode is silent corruption of the user's document rather than a
-visible error. A1–A8 all still pass with a broken reasoning filter.
+### A9 caveat — the live check is weaker than it looks
+
+An earlier draft of this document claimed A9 was "the only live check of FR-008"
+and must not be skipped. **That was wrong, and relying on it would have created
+false confidence.**
+
+The provider deliberately sends no `thinking` field (research R4), so it cannot
+request `display: "summarized"`. On the Claude 5 tier `thinking.display` defaults
+to `"omitted"`, which means reasoning blocks arrive with an **empty** `thinking`
+string, and the raw chain of thought is never returned at all. A broken
+allow-list would therefore concatenate empty strings and produce a document that
+still looks correct — **A9 passes whether the filter works or not.**
+
+FR-008 is genuinely guaranteed by the **unit tests**, not by A9. Those feed
+synthetic response bodies containing non-empty `thinking`, `redacted_thinking`,
+and unrecognised block types — content the live API will not produce through this
+provider — and assert none of it survives extraction. Treat
+`swift test --filter AnthropicProviderTests` as the gate for FR-008, and A9 as a
+smoke check that a reasoning-tier model still yields clean output end to end.
 
 ---
 
