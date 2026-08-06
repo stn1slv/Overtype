@@ -11,7 +11,6 @@ final class ProviderErrorRetryTests: XCTestCase {
   func testTransientNetworkErrorsAreRetryable() {
     let transient: [URLError.Code] = [
       .notConnectedToInternet, .networkConnectionLost, .dnsLookupFailed, .cannotConnectToHost,
-      .resourceUnavailable,
     ]
     for code in transient {
       XCTAssertTrue(
@@ -28,6 +27,9 @@ final class ProviderErrorRetryTests: XCTestCase {
       .badURL, .unsupportedURL, .cannotFindHost, .secureConnectionFailed,
       .serverCertificateUntrusted, .userAuthenticationRequired,
       .appTransportSecurityRequiresSecureConnection,
+      // -1008: a resource that could not be retrieved or decoded, not a
+      // transient condition, despite the "unavailable" name.
+      .resourceUnavailable,
     ]
     for code in deterministic {
       XCTAssertFalse(
@@ -56,6 +58,17 @@ final class ProviderErrorRetryTests: XCTestCase {
 
   func testRateLimitIsRetryable() {
     XCTAssertTrue(ProviderError.apiError(statusCode: 429, message: "rate limited").isRetryable)
+  }
+
+  func testRequestTimeoutIsRetryable() {
+    // 408: some proxies return it instead of dropping the socket.
+    XCTAssertTrue(ProviderError.apiError(statusCode: 408, message: "timeout").isRetryable)
+  }
+
+  func testNotImplementedIsNotRetryable() {
+    // 501 sits in the 5xx range but is deterministic: the server will never
+    // serve this call, so a second attempt is wasted.
+    XCTAssertFalse(ProviderError.apiError(statusCode: 501, message: "nope").isRetryable)
   }
 
   func testServerErrorsAreRetryable() {

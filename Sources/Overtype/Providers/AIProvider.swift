@@ -65,12 +65,20 @@ public enum ProviderError: Error, LocalizedError {
   /// can plausibly succeed moments later. Everything else (bad URL, unknown
   /// host, TLS failure, authentication required) describes a setup problem that
   /// a second identical request cannot fix.
+  ///
+  /// Deliberate exclusion, do not "fix" without reading this: `.cannotFindHost`
+  /// (-1003) is left out even though CFNetwork emits it for most DNS failures,
+  /// including transient resolver hiccups. It is also what a typo in `baseURL`
+  /// produces, and the two are indistinguishable from the code alone. The
+  /// tradeoff is chosen against retrying, because a misconfigured provider is
+  /// the more common cause and a user waiting on a doomed second request cannot
+  /// tell why. A real connectivity outage still retries: it surfaces as
+  /// `.notConnectedToInternet` or `.cannotConnectToHost`, both listed here.
   static let retryableURLErrorCodes: Set<URLError.Code> = [
     .networkConnectionLost,
     .notConnectedToInternet,
     .dnsLookupFailed,
     .cannotConnectToHost,
-    .resourceUnavailable,
   ]
 
   /// Whether a single automatic retry is worth attempting.
@@ -98,10 +106,12 @@ public enum ProviderError: Error, LocalizedError {
       }
       return Self.retryableURLErrorCodes.contains(urlError.code)
     case .apiError(let statusCode, _):
-      // 429 (rate limited) and 5xx (server fault) are the retryable HTTP
-      // outcomes. Other 4xx codes describe the request itself, so a repeat of
-      // that same request is rejected identically.
-      return statusCode == 429 || (500...599).contains(statusCode)
+      // Retryable: 408 (some proxies return it instead of a socket timeout),
+      // 429 (rate limited), and 5xx server faults except 501. Other 4xx codes
+      // describe the request itself, so a repeat is rejected identically, and
+      // 501 (Not Implemented) means the server will never serve this call.
+      if statusCode == 408 || statusCode == 429 { return true }
+      return (500...599).contains(statusCode) && statusCode != 501
     case .apiKeyMissing, .invalidURL, .invalidResponse, .cancelled, .contextChanged,
       .responseBlocked, .emptyResponse:
       return false

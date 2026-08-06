@@ -157,6 +157,13 @@ public class ActionEngine {
         FeedbackPresenter.shared.showError(message: "API Error \(statusCode): \(message)")
         Logger.shared.log("Action failed: API error \(statusCode).", level: .error)
         Logger.shared.sanitizedLog(sensitiveText: message, context: "API error body", level: .debug)
+      } catch let error as ProviderError {
+        // Log the redaction-safe label, never the error itself: cases such as
+        // .responseBlocked(reason:) interpolate their associated value, and an
+        // error payload can echo fragments of the submitted text. The HUD may
+        // still show the full description; only info+ logs are constrained.
+        FeedbackPresenter.shared.showError(message: error.localizedDescription)
+        Logger.shared.log("Action failed: \(error.logLabel).", level: .error)
       } catch {
         FeedbackPresenter.shared.showError(message: error.localizedDescription)
         Logger.shared.log("Action failed: \(error)", level: .error)
@@ -172,14 +179,23 @@ public class ActionEngine {
   /// Converts a configured retry delay into nanoseconds for `Task.sleep`.
   ///
   /// Clamped at both ends because `config.json` is a documented hand-editing
-  /// surface and both extremes trap at runtime: a negative or non-finite value
-  /// crashes `Task.sleep`, and a large one (`1e11`, say) overflows the `UInt64`
-  /// conversion with "Double value cannot be converted to UInt64". Returns 0 to
-  /// mean "retry immediately, no sleep". Pure logic, unit-tested.
+  /// surface and both extremes trap in the `UInt64(...)` conversion below: a
+  /// negative or non-finite value has no `UInt64` representation, and a large
+  /// one (`1e11`, say) overflows with "Double value cannot be converted to
+  /// UInt64". Returns 0 to mean "retry immediately, no sleep". Pure logic,
+  /// unit-tested, and deliberately free of logging so it stays pure; callers
+  /// report a clamp via `isRetryDelayInRange`.
   static func retryDelayNanoseconds(forSeconds seconds: Double) -> UInt64 {
     // NaN fails both comparisons, so it also lands on 0.
     guard seconds.isFinite, seconds > 0 else { return 0 }
     return UInt64(min(seconds, maxRetryDelaySeconds) * 1_000_000_000)
+  }
+
+  /// Whether a configured delay is used as written rather than clamped. Lets the
+  /// caller warn instead of silently substituting a different value, the same
+  /// reason the Providers tab loads `retryDelaySeconds` unclamped.
+  static func isRetryDelayInRange(_ seconds: Double) -> Bool {
+    seconds.isFinite && (0...maxRetryDelaySeconds).contains(seconds)
   }
 
   /// Runs the provider call, retrying once if the failure was transient.
@@ -213,6 +229,15 @@ public class ActionEngine {
       // Brief pause so a rate limit has a chance to clear before the second
       // attempt. Task.sleep is cancellable, so Escape during the wait still
       // aborts the run with nothing written.
+      //
+      // A hand-edited value outside the supported range is clamped rather than
+      // honored, so say so (Principle IV): otherwise a configured 120s behaves
+      // as 60s with nothing to explain the difference.
+      if !Self.isRetryDelayInRange(retryDelaySeconds) {
+        Logger.shared.log(
+          "Configured retryDelaySeconds (\(retryDelaySeconds)) is outside "
+            + "0...\(Self.maxRetryDelaySeconds)s; clamping.", level: .warning)
+      }
       let delayNanoseconds = Self.retryDelayNanoseconds(forSeconds: retryDelaySeconds)
       if delayNanoseconds > 0 {
         try await Task.sleep(nanoseconds: delayNanoseconds)
