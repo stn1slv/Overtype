@@ -285,9 +285,19 @@ address contacted during a run is the configured local one.
   human-readable error stating the limit and an action the user can actually
   take, MUST leave the selection unchanged, and MUST NOT be retried. The bound
   it compares against MUST be a fixed conservative constant derived once from
-  the context size, not a per-request estimate, and MUST be measured against
-  what is actually sent to the model (the action's prompt with the selection
-  substituted, plus the system prompt) rather than against the selection alone.
+  the context size **or from the window the model actually reports**, and MUST
+  be measured against what is actually sent to the model (the action's prompt
+  with the selection substituted, plus the system prompt) rather than against
+  the selection alone. It MUST NOT vary with the content of an individual
+  request.
+
+  (Revised again 2026-08-06, review round 5: the original wording forbade
+  per-model logic outright. Measurement showed a fixed constant cannot hold the
+  guarantee — the service clamps the context window to the model's own maximum
+  and then truncates an over-long prompt to half of it, silently — so the bound
+  is now the smaller of the fixed constant and half the window the model
+  reports. That is still fixed per model rather than per request, which is what
+  the original restriction was protecting against.)
   (Revised 2026-08-06: the original wording required the message to name the
   action's Max Characters setting. Implementation review established that
   lowering that setting cannot make the run succeed — it makes the same

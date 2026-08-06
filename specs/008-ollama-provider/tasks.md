@@ -26,9 +26,9 @@ negative assertion on the request body's key set. Task IDs were renumbered.
 independently testable increment.
 
 **Implementation status, 2026-08-06**: 27 of 32 tasks complete. All code, tests,
-and documentation are done; `swift test` reports 226 tests with 0 failures.
+and documentation are done; `swift test` reports 229 tests with 0 failures.
 
-Four review rounds were applied after the first implement pass. The second found
+Five review rounds were applied after the first implement pass. The second found
 two real data-loss paths that the first version of this feature had shipped past:
 the 12000-character input bound was derived from an English token ratio and did
 not hold for CJK, and `num_ctx` was sized for the prompt alone although it also

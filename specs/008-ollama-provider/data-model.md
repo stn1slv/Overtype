@@ -49,7 +49,7 @@ Exception IV-b in `plan.md`.
 |---|---|---|---|---|
 | `serviceUnreachable(address: String)` | endpoint host from config | names the address and says the service does not appear to be running | `"service unreachable"` | `false` |
 | `modelNotAvailable(model: String)` | resolved model name from the request | names the model and says it is not installed locally | `"model not available"` | `false` |
-| `inputTooLargeForContext(limit: Int)` | `maxSafePromptTokens` | states the limit (a token estimate, ~characters for Latin/CJK; the action's prompt counts too) and tells the user to select less text | `"input too large for context"` | `false` |
+| `inputTooLargeForContext(limit: Int)` | the prompt budget in force | states the limit (a token estimate, ~characters for Latin/CJK; the action's prompt counts too) and tells the user to select less text | `"input too large for context"` | `false` |
 
 Every payload originates in the user's own configuration or in a compile-time
 constant, never in server-authored text or the selection, so `errorDescription`
@@ -78,10 +78,11 @@ without a network.
 | `contextWindowTokens` | `static let Int` | `16384` (R3) | via `requestBody` |
 | `maxSafePromptTokens` | `static let Int` | `6000` — the pre-send bound in estimated tokens, FR-010b (R3, R13) | via `checkInputSize` |
 | `estimatedTokens(_:)` | `static func` | `utf8.count` — the true token upper bound; measured, see R13 | yes |
-| `promptBudget(grantedWindow:)` | `static func` | `min(maxSafePromptTokens, granted / 2)` — the server keeps half the window (R13) | yes |
+| `promptBudget(grantedWindow:)` | `static func` | `min(maxSafePromptTokens, window / 2 - 2 × overhead)`, window defaulting to a conservative 4096 when unknown (R13) | yes |
+| `truncationThreshold(grantedWindow:)` | `static func` | `window / 2` — the evaluated-token count that means the prompt was clipped (R13) | yes |
 | `parseContextLength(from:)` | `static func` | reads `model_info.<arch>.context_length` from `/api/show` (R13) | yes |
 | `showEndpointURL(base:)` | `static func` | `{base}/api/show` | yes |
-| `checkInputSize(systemPrompt:userPrompt:)` | `static func` | throws `inputTooLargeForContext(limit:)` when the composed prompt exceeds the bound | yes |
+| `checkInputSize(systemPrompt:userPrompt:budgetTokens:)` | `static func` | throws `inputTooLargeForContext(limit:)` when the composed prompt exceeds the budget in force | yes |
 | `endpointURL(base:)` | `static func` | `{base}/api/chat`, slash-normalised | yes |
 | `requestBody(model:systemPrompt:userPrompt:temperature:)` | `static func` | Body per contract; asserts `stream: false`, `num_ctx`, role split | yes |
 | `stripLeadingReasoningBlock(_:)` | `static func` | FR-009 layer 2, table in the contract | yes |
@@ -99,7 +100,8 @@ ActionEngine.run(action:)
   → size check vs maxInputCharacters    (unchanged; refuses, never truncates)
   → ProviderRegistry.provider(for:)     (+1 line: .ollama → OllamaProvider)
   → OllamaProvider.transform            (new)
-        checkInputSize                  (FR-010b: refuses before any request)
+        GET model window via /api/show  (cached per model; model name only)
+        checkInputSize                  (FR-010b: refuses before the chat request)
         POST /api/chat {stream:false, options:{temperature, num_ctx:16384}}
         → message.content
         → stripLeadingReasoningBlock
@@ -109,7 +111,8 @@ ActionEngine.run(action:)
   → TextWriter                          (unchanged)
 ```
 
-No stage before the write is added or reordered, so Principle II holds by
+The only stage added before the write is the window lookup, which carries no
+user text and whose failure is non-fatal. Principle II still holds by
 construction: every Ollama failure throws before `TextWriter` is reached.
 
 ## Configuration example (documentation only)

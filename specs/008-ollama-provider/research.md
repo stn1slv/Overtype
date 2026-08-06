@@ -126,8 +126,9 @@ would diverge from them and belongs in a spec revision.
 ## R13. Token estimation and the prompt budget (added 2026-08-06, review round 4)
 
 **Decision**: estimate tokens as the **UTF-8 byte count**, and cap the prompt at
-`min(6000, grantedWindow / 2)` where `grantedWindow` is read once per model from
-`POST /api/show` and cached.
+`min(6000, window / 2 - 2 × templateOverhead)` where `window` is read once per
+model from `POST /api/show` and cached, falling back to a conservative 4096 when
+it cannot be established.
 
 Both halves of this were arrived at by measurement, after a review round pointed
 at the area and a first attempt at fixing it was falsified by running it.
@@ -169,6 +170,27 @@ a window of 2048, the check did not fire, and a live test caught it. The budget
 is now half the window, checked **before** sending, so an oversized prompt is
 refused rather than detected after the fact. The post-hoc `prompt_eval_count`
 check remains as a backstop against the same budget.
+
+**Corrections from review round 5**, both of which reopened the hole this
+research exists to close:
+
+- *Failing open on an unknown window.* The first version returned the fixed 6000
+  budget when `/api/show` could not answer, which is exactly the pre-fix
+  behaviour: a deployment behind a proxy that routes only `/api/chat`, running a
+  2048-window model, would accept a 3000-byte prompt and have it truncated in
+  silence. The fallback is now a conservative 4096 window (Ollama's own default
+  when a model does not specify one), so such deployments are limited rather
+  than unprotected.
+- *The estimate is not a bound on the whole request.* `prompt_eval_count`
+  includes chat-template and special tokens that the text-only estimate cannot
+  see — measured at roughly +30 (300 bytes → 328; 1200 bytes → 1194). With the
+  budget at exactly half the window, a legitimate near-budget CJK prompt would
+  evaluate to the same count as a truncated one, so the backstop could both
+  false-positive and miss. The budget now reserves twice that overhead, which
+  puts a strict gap between "largest legitimate prompt" and "truncation signal".
+  A unit test asserts the gap across five window sizes rather than trusting the
+  arithmetic — and it caught an off-by-one-reserve error in the first attempt at
+  this fix.
 
 **Why `/api/show` at all**: Ollama clamps `num_ctx` down to a model's own
 maximum, so the requested 16384 is not what a 2048-model runs at. The lookup

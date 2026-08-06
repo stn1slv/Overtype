@@ -98,7 +98,8 @@ permission is bound to the code signature.
 | O13 | FR-019, SC-007 | Run O1 with debug logging off, then inspect logs | Neither the selection nor the output appears; `/usr/bin/log` — the bare `log` is shadowed by a zsh builtin |
 | O14 | SC-008 | Run one existing OpenAI/Gemini/Anthropic action | Behaves exactly as before |
 | O15 | FR-010a | Set an action's Max Characters to 5000, select ~5000 characters, run | Whole selection is rewritten; no silent shortening of the input |
-| O16 | FR-010b | Raise the action's Max Characters to its maximum, select more than 6000 characters, run | Specific error naming the 6000-character limit and telling you to select less text; nothing sent, selection unchanged, no retry delay |
+| O16 | FR-010b | Raise the action's Max Characters to its maximum, select more than 6000 characters, run | Specific error naming the byte limit in force (6000 on a large-window model, less on a small one) and telling you to select less text; the transformation request is not sent, selection unchanged, no retry delay |
+| O17 | FR-010b, R13 | Configure a small-window model (`ollama pull tinyllama`, window 2048) and select ~2000 characters | Refused with a limit of 768, not 6000 — the budget follows the model's own window |
 
 O12's second model is now pulled in step 5 of the prerequisites, so it should
 always be executable. If that pull fails and no substitute reasoning model is

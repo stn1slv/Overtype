@@ -197,23 +197,82 @@ final class OllamaProviderTests: XCTestCase {
     XCTAssertEqual(OllamaProvider.estimatedTokens(cjk), 300)
   }
 
-  func testTheEstimateIsNeverBelowTheRealTokenCostMeasuredOnTheService() {
-    // Pins the observation above as a regression guard: 300 bytes of CJK cost
-    // 328 tokens on tinyllama. An estimate below the real cost is the failure
-    // mode that matters, so assert the estimate is in that ballpark rather than
-    // an order of magnitude under it.
-    let cjk = String(
-      (0..<100).compactMap { Unicode.Scalar(0x4E00 + UInt32($0)).map(Character.init) })
-    XCTAssertGreaterThanOrEqual(OllamaProvider.estimatedTokens(cjk), 300)
+  func testTheOverheadReserveCoversTheMeasuredTemplateCost() {
+    // The estimate counts only the text, but the server also prepends chat
+    // template and special tokens. Measured on Ollama 0.32.5: 300 bytes of CJK
+    // evaluated to 328 tokens, 1200 bytes to 1194 — an overhead of roughly +30
+    // that `estimatedTokens` structurally cannot see. The reserve must cover it,
+    // or the budget and the truncation signal overlap.
+    let measuredOverhead = 328 - 300
+    XCTAssertGreaterThan(
+      OllamaProvider.templateOverheadTokens, measuredOverhead,
+      "the reserve must exceed the measured template overhead, or a legitimate "
+        + "near-budget prompt is indistinguishable from a truncated one")
+  }
+
+  func testALegitimatePromptCanNeverReachTheTruncationSignal() {
+    // The property the whole design turns on, asserted rather than argued: a
+    // prompt that passes the pre-send check, plus the worst-case template
+    // overhead, must still evaluate below the count that means "truncated".
+    for window in [2048, 4096, 8192, 16384, 131_072] {
+      let budget = OllamaProvider.promptBudget(grantedWindow: window)
+      let signal = OllamaProvider.truncationThreshold(grantedWindow: window)
+      XCTAssertLessThan(
+        budget + OllamaProvider.templateOverheadTokens, signal,
+        "at window \(window) a legitimate prompt could be misread as truncated")
+    }
   }
 
   // MARK: - promptBudget
 
-  func testBudgetIsHalfTheWindowWhenTheWindowIsSmall() {
+  func testBudgetIsHalfTheWindowLessTheReserveWhenTheWindowIsSmall() {
     // Measured: a model with a 2048 window keeps ~1026 prompt tokens when it
-    // truncates, i.e. half. The budget must follow the window, not the constant.
-    XCTAssertEqual(OllamaProvider.promptBudget(grantedWindow: 2048), 1024)
-    XCTAssertEqual(OllamaProvider.promptBudget(grantedWindow: 4096), 2048)
+    // truncates, i.e. half. The budget follows the window, minus the reserve
+    // that keeps a legitimate prompt clear of that signal.
+    XCTAssertEqual(
+      OllamaProvider.promptBudget(grantedWindow: 2048),
+      1024 - OllamaProvider.templateOverheadTokens * 2)
+    XCTAssertEqual(
+      OllamaProvider.promptBudget(grantedWindow: 4096),
+      2048 - OllamaProvider.templateOverheadTokens * 2)
+  }
+
+  func testAnUnknownWindowFailsClosedRatherThanFallingBackToTheFixedConstant() {
+    // The regression this guards: falling back to `maxSafePromptTokens` when the
+    // window is unknown re-created the silent-truncation hole for any deployment
+    // that does not expose /api/show.
+    let unknown = OllamaProvider.promptBudget(grantedWindow: nil)
+    XCTAssertLessThan(
+      unknown, OllamaProvider.maxSafePromptTokens,
+      "an unknown window must not grant the full fixed budget")
+    XCTAssertEqual(
+      unknown,
+      OllamaProvider.assumedWindowWhenUnknown / 2 - OllamaProvider.templateOverheadTokens * 2)
+  }
+
+  func testTheSmallestContextLengthWins() {
+    // Dictionary order is unspecified, so a body with two matching keys must not
+    // yield a different window on different launches.
+    let body = Data(
+      #"{"model_info":{"llama.context_length":8192,"clip.context_length":2048}}"#.utf8)
+    XCTAssertEqual(OllamaProvider.parseContextLength(from: body), 2048)
+  }
+
+  func testTheReportedLimitIsTheBudgetInForceNotTheFixedConstant() {
+    // On a small-window model the two differ, and naming 6000 when the run was
+    // refused at 896 aims the user at the wrong number.
+    do {
+      try OllamaProvider.checkInputSize(
+        systemPrompt: "", userPrompt: String(repeating: "a", count: 2000), budgetTokens: 896)
+      XCTFail("expected a refusal")
+    } catch let error as ProviderError {
+      guard case .inputTooLargeForContext(let limit) = error else {
+        return XCTFail("expected inputTooLargeForContext, got \(error)")
+      }
+      XCTAssertEqual(limit, 896)
+    } catch {
+      XCTFail("unexpected: \(error)")
+    }
   }
 
   func testBudgetIsCappedByTheFixedConstantForLargeWindows() {
@@ -221,11 +280,6 @@ final class OllamaProviderTests: XCTestCase {
       OllamaProvider.promptBudget(grantedWindow: 131_072), OllamaProvider.maxSafePromptTokens)
     XCTAssertEqual(
       OllamaProvider.promptBudget(grantedWindow: 16384), OllamaProvider.maxSafePromptTokens)
-  }
-
-  func testBudgetFallsBackToTheConstantWhenTheWindowIsUnknown() {
-    XCTAssertEqual(
-      OllamaProvider.promptBudget(grantedWindow: nil), OllamaProvider.maxSafePromptTokens)
   }
 
   func testASmallWindowModelRefusesAPromptTheFixedConstantWouldAllow() {
@@ -310,12 +364,13 @@ final class OllamaProviderTests: XCTestCase {
     // Against the requested window this looks fine — and that was the bug.
     XCTAssertEqual(
       try? OllamaProvider.parseResponseText(
-        from: data, windowTokens: OllamaProvider.contextWindowTokens),
+        from: data, truncationThreshold: OllamaProvider.contextWindowTokens),
       "a partial rewrite")
 
     // Against the budget the service actually granted, it is a truncation.
     XCTAssertThrowsError(
-      try OllamaProvider.parseResponseText(from: data, windowTokens: 1024)
+      try OllamaProvider.parseResponseText(
+        from: data, truncationThreshold: 1024, reportedLimit: 768)
     ) { error in
       guard case ProviderError.inputTooLargeForContext = error else {
         return XCTFail("expected inputTooLargeForContext, got \(error)")
@@ -489,7 +544,7 @@ final class OllamaProviderTests: XCTestCase {
     }
     XCTAssertThrowsError(
       try OllamaProvider.parseResponseText(
-        from: data, windowTokens: OllamaProvider.contextWindowTokens - 1)
+        from: data, truncationThreshold: OllamaProvider.contextWindowTokens - 1)
     ) { error in
       guard case ProviderError.inputTooLargeForContext = error else {
         return XCTFail("expected inputTooLargeForContext, got \(error)")

@@ -96,9 +96,16 @@ public class OllamaProvider: AIProvider {
   /// thousands of tokens straight past the guard — the opposite of the
   /// conservative direction this bound is supposed to err in.
   ///
-  /// The estimate is the UTF-8 byte count, which is the true upper bound: a
-  /// byte-level BPE token covers at least one byte, so a string can never cost
-  /// more tokens than it has bytes.
+  /// The estimate is the UTF-8 byte count: a byte-level BPE token covers at
+  /// least one byte, so the text itself can never cost more tokens than it has
+  /// bytes.
+  ///
+  /// It is NOT a bound on the whole request. The server also prepends chat
+  /// template and special tokens that never appear in this string — measured at
+  /// roughly +30 on Ollama 0.32.5 (300 bytes of CJK reported 328 evaluated
+  /// tokens; 1200 bytes reported 1194). `templateOverheadTokens` reserves room
+  /// for that, and is why the budget sits below half the window rather than at
+  /// it.
   ///
   /// MEASURED, not assumed (2026-08-06, Ollama 0.32.5 / tinyllama). An earlier
   /// version of this used `max(count, utf8.count / 3)` on the theory that
@@ -116,6 +123,25 @@ public class OllamaProvider: AIProvider {
   static func estimatedTokens(_ text: String) -> Int {
     return text.utf8.count
   }
+
+  /// Reserved for the chat template and special tokens the server adds and
+  /// `estimatedTokens` cannot see. Measured at ~30; 128 leaves margin, and the
+  /// margin is what separates a legitimate near-budget prompt from a truncated
+  /// one in `truncationThreshold(grantedWindow:)`.
+  static let templateOverheadTokens = 128
+
+  /// Window assumed when the service will not tell us the real one.
+  ///
+  /// FAIL CLOSED, deliberately. An earlier version fell back to
+  /// `maxSafePromptTokens` here, which re-created the very hole the granted
+  /// window exists to close: a deployment that does not expose `/api/show` (a
+  /// reverse proxy routing only `/api/chat`, say) got a 6000-token budget
+  /// regardless of a model window of 2048, and the overflow was truncated in
+  /// silence. 4096 is Ollama's own default when a model does not specify one,
+  /// so assuming it is conservative without being punitive; the cost is that
+  /// such deployments are limited to ~1920 bytes of prompt until `/api/show`
+  /// becomes reachable.
+  static let assumedWindowWhenUnknown = 4096
 
   /// Effective context window per model, as reported by the service.
   ///
@@ -147,7 +173,13 @@ public class OllamaProvider: AIProvider {
     // silently clipped by the server. Cached per model, so only the first run
     // pays the extra round trip.
     let granted = await grantedContextWindow(model: request.model)
+    // The lookup swallows its own errors, including cancellation, so Escape
+    // pressed during it is honoured here rather than silently continuing into
+    // the chat request.
+    try Task.checkCancellation()
+
     let budget = Self.promptBudget(grantedWindow: granted)
+    let truncationAt = Self.truncationThreshold(grantedWindow: granted)
 
     // Before a URL, a body, or the Keychain is touched: an oversized
     // request costs nothing and reaches nothing.
@@ -215,7 +247,8 @@ public class OllamaProvider: AIProvider {
         message: Self.extractErrorMessage(from: data))
     }
 
-    return try Self.parseResponseText(from: data, windowTokens: budget)
+    return try Self.parseResponseText(
+      from: data, truncationThreshold: truncationAt, reportedLimit: budget)
   }
 
   /// The window the service will actually use for this model, or nil if it
@@ -235,6 +268,11 @@ public class OllamaProvider: AIProvider {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+    // Bounded independently of the provider's timeout. The session's timeout
+    // applies per task, so without this a deployment that never answers
+    // `/api/show` would add a full `timeoutSeconds` to every run — and, since a
+    // timeout is retryable, up to four times it across a retried run.
+    request.timeoutInterval = min(Self.showRequestTimeoutSeconds, config.timeoutSeconds)
     if let header = Self.authorizationHeader(forKeychainKey: config.keychainKey) {
       request.addValue(header, forHTTPHeaderField: "Authorization")
     }
@@ -255,6 +293,9 @@ public class OllamaProvider: AIProvider {
     cacheLock.unlock()
     return window
   }
+
+  /// Upper bound on the window lookup, independent of the provider timeout.
+  static let showRequestTimeoutSeconds: Double = 5
 
   /// Builds `<base>/api/show`.
   static func showEndpointURL(base: URL?) throws -> URL {
@@ -277,10 +318,18 @@ public class OllamaProvider: AIProvider {
     else {
       return nil
     }
-    for (key, value) in info where key.hasSuffix(".context_length") {
-      if let length = value as? Int, length > 0 { return length }
+    // Take the SMALLEST positive match rather than the first: dictionary order
+    // is unspecified, and a multimodal body can carry more than one
+    // `*.context_length` (a vision tower exposes its own). First-match-wins
+    // would pick a different window on different launches and then cache it for
+    // the process lifetime. The smallest is also the safe one to believe.
+    let lengths = info.compactMap { key, value -> Int? in
+      guard key.hasSuffix(".context_length"), let length = value as? Int, length > 0 else {
+        return nil
+      }
+      return length
     }
-    return nil
+    return lengths.min()
   }
 
   /// The address to name in `.serviceUnreachable`.
@@ -323,9 +372,34 @@ public class OllamaProvider: AIProvider {
   /// This is why the fixed `maxSafePromptTokens` alone was not enough: on a
   /// model whose window is below 12000, half of it is less than that constant,
   /// and the difference was silently truncated.
+  /// Reserves TWICE the template overhead, which is not redundancy: the budget
+  /// has to leave a strict gap below the truncation signal, and subtracting the
+  /// overhead only once closes it exactly. With one reserve, a worst-case
+  /// legitimate prompt evaluates to `budget + overhead == window / 2`, which is
+  /// the signal itself, so it would be reported as truncated. A unit test
+  /// (`testALegitimatePromptCanNeverReachTheTruncationSignal`) pins the gap.
   static func promptBudget(grantedWindow: Int?) -> Int {
-    guard let grantedWindow else { return maxSafePromptTokens }
-    return min(maxSafePromptTokens, max(1, grantedWindow / 2))
+    let window = grantedWindow ?? assumedWindowWhenUnknown
+    return min(maxSafePromptTokens, max(1, window / 2 - templateOverheadTokens * 2))
+  }
+
+  /// The evaluated-token count at or above which the prompt must have been
+  /// truncated.
+  ///
+  /// The two ranges have to be kept apart, and that is the whole reason
+  /// `promptBudget` subtracts the overhead. A prompt that passed the pre-send
+  /// check is at most `budget` bytes, so it can evaluate to at most
+  /// `budget + overhead = window/2 - overhead + overhead`, i.e. strictly below
+  /// half the window. A truncated prompt, measured, comes back AT half the
+  /// window (1026 against a 2048-window model). So `>= window/2` means
+  /// truncation and nothing else.
+  ///
+  /// Without the reserve these overlap: budget and signal would both be
+  /// `window/2`, so a legitimate CJK prompt at the limit would be misreported as
+  /// truncated, and a truncation landing a token low would be missed.
+  static func truncationThreshold(grantedWindow: Int?) -> Int {
+    let window = grantedWindow ?? assumedWindowWhenUnknown
+    return max(1, window / 2)
   }
 
   /// Builds the `Authorization` header value, or nil when the provider has no
@@ -417,9 +491,11 @@ public class OllamaProvider: AIProvider {
   /// user's document (FR-009 layer 1). Mirrors
   /// `AnthropicProvider.extractText`, which filters to `text` blocks for the
   /// same reason.
-  static func parseResponseText(from data: Data, windowTokens: Int = contextWindowTokens) throws
-    -> String
-  {
+  static func parseResponseText(
+    from data: Data,
+    truncationThreshold: Int = contextWindowTokens,
+    reportedLimit: Int = maxSafePromptTokens
+  ) throws -> String {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let message = json["message"] as? [String: Any],
       let content = message["content"] as? String
@@ -444,9 +520,12 @@ public class OllamaProvider: AIProvider {
     // clamps `num_ctx` down to it — and those are precisely the models that
     // truncate.
     if let promptTokens = json["prompt_eval_count"] as? Int,
-      promptTokens > windowTokens
+      promptTokens >= truncationThreshold
     {
-      throw ProviderError.inputTooLargeForContext(limit: maxSafePromptTokens)
+      // Reports the budget actually in force, not the fixed constant: on a
+      // small-window model the two differ, and naming 6000 when the run was
+      // refused at 896 tells the user to aim at the wrong number.
+      throw ProviderError.inputTooLargeForContext(limit: reportedLimit)
     }
 
     let text = stripLeadingReasoningBlock(content)

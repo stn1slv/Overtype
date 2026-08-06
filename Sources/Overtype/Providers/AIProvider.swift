@@ -42,9 +42,11 @@ public enum ProviderError: Error, LocalizedError {
   case serviceUnreachable(address: String)
   /// The service answered, but the requested model is not installed on it.
   case modelNotAvailable(model: String)
-  /// The selection is larger than the provider's fixed context window can hold
-  /// together with a prompt and a full answer. Thrown before any request is
-  /// built, so nothing is sent (specs/008-ollama-provider FR-010b).
+  /// The prompt is larger than the model's context window can hold together
+  /// with a full answer. Thrown before the transformation request is built, so
+  /// the selection is never sent (specs/008-ollama-provider FR-010b). The
+  /// provider may already have asked the service about the model's window,
+  /// which carries no user text.
   case inputTooLargeForContext(limit: Int)
 
   public var errorDescription: String? {
@@ -78,13 +80,18 @@ public enum ProviderError: Error, LocalizedError {
         "The model \"\(model)\" is not installed on the AI service. Install it, "
         + "or choose a model that is. Nothing was changed."
     case .inputTooLargeForContext(let limit):
+      // The unit is UTF-8 bytes, not characters, and saying "characters" would
+      // mislead exactly the users the difference bites: a CJK selection costs
+      // about three per character, so someone told "limit 1024 characters"
+      // would keep failing at ~340 and have no idea why.
+      //
       // Only "select less text" is actionable. Lowering the action's Max
       // Characters cannot make this run succeed — it makes the same selection
       // fail earlier, with a different message.
       return
-        "The selection is too large for this provider (limit \(limit) characters, "
-        + "including the action's prompt). Select less text and try again. "
-        + "Nothing was changed."
+        "The selection is too large for this provider (limit \(limit) bytes, "
+        + "including the action's prompt; non-Latin text costs more than one "
+        + "byte per character). Select less text and try again. Nothing was changed."
     }
   }
 

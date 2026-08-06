@@ -203,7 +203,7 @@ before this feature ships in a release.
 | O11 | Only the configured address is contacted | No other host reached | pending (needs manual run with a network monitor) |
 | O12 | Reasoning model writes no reasoning | Only the answer; no reasoning text, no `<think>` markers | **PASS** (provider-level, `deepseek-r1:1.5b`). See the note below |
 | O13 | Logs at the default level | No selected text or model output | pending (needs manual run) |
-| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (226 tests, 0 failures); live cloud run pending |
+| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (229 tests, 0 failures); live cloud run pending |
 | O15 | Full-size selection at the 5000-character default | Rewritten whole, no silent shortening | pending (needs manual run) |
 | O16 | Selection above 6000 characters | Specific error naming the limit; nothing sent; no retry | PASS (`OllamaProviderTests`, `checkInputSize`); end-to-end pending |
 
@@ -264,3 +264,11 @@ counts UTF-8 bytes for this reason.
 symptom will be Ollama actions refusing selections that used to work (harmless,
 visible) rather than silently rewriting fragments. Re-run the table above before
 changing `promptBudget` or `estimatedTokens`.
+
+**Guard arithmetic (round 5).** The measured `+30` template overhead is why the
+prompt budget sits at `window / 2 - 2 × 128` rather than at `window / 2`: the
+largest legitimate prompt must evaluate strictly below the truncation signal, or
+the two are indistinguishable. `testALegitimatePromptCanNeverReachTheTruncation‑
+Signal` asserts that gap across five window sizes. Verified live against
+`tinyllama`: a 2000-character selection is refused with a limit of **768**, the
+budget that model's window actually allows, not the fixed 6000.
