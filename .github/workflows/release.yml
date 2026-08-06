@@ -44,7 +44,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          gh release create "$GITHUB_REF_NAME" --title "Release $GITHUB_REF_NAME" --generate-notes || true
+          # Title is the bare tag ("v1.3.0"), not "Release v1.3.0", so the
+          # release name and the tag it points at read identically everywhere
+          # they are listed side by side.
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || true
           gh release upload "$GITHUB_REF_NAME" "Overtype_${VERSION}_macos.zip" --clobber
 
       - name: Publish Homebrew Cask
