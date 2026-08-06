@@ -163,6 +163,24 @@ public class ActionEngine {
     }
   }
 
+  /// Upper bound for the retry pause. The Providers tab slider already caps at
+  /// 5s; this exists for hand-edited configs, where a longer wait is
+  /// indistinguishable from the app having hung.
+  static let maxRetryDelaySeconds: Double = 60
+
+  /// Converts a configured retry delay into nanoseconds for `Task.sleep`.
+  ///
+  /// Clamped at both ends because `config.json` is a documented hand-editing
+  /// surface and both extremes trap at runtime: a negative or non-finite value
+  /// crashes `Task.sleep`, and a large one (`1e11`, say) overflows the `UInt64`
+  /// conversion with "Double value cannot be converted to UInt64". Returns 0 to
+  /// mean "retry immediately, no sleep". Pure logic, unit-tested.
+  static func retryDelayNanoseconds(forSeconds seconds: Double) -> UInt64 {
+    // NaN fails both comparisons, so it also lands on 0.
+    guard seconds.isFinite, seconds > 0 else { return 0 }
+    return UInt64(min(seconds, maxRetryDelaySeconds) * 1_000_000_000)
+  }
+
   /// Runs the provider call, retrying once if the failure was transient.
   ///
   /// Only `ProviderError.isRetryable` failures are retried; everything else,
@@ -189,11 +207,10 @@ public class ActionEngine {
 
       // Brief pause so a rate limit has a chance to clear before the second
       // attempt. Task.sleep is cancellable, so Escape during the wait still
-      // aborts the run with nothing written. A negative or non-finite value
-      // from a hand-edited config would trap in Task.sleep, so clamp it.
-      let delay = retryDelaySeconds.isFinite ? max(0, retryDelaySeconds) : 0
-      if delay > 0 {
-        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      // aborts the run with nothing written.
+      let delayNanoseconds = Self.retryDelayNanoseconds(forSeconds: retryDelaySeconds)
+      if delayNanoseconds > 0 {
+        try await Task.sleep(nanoseconds: delayNanoseconds)
       }
 
       return try await provider.transform(request)
