@@ -27,10 +27,12 @@ public class ActionEngine {
 
     let config = ConfigStore.shared.config
 
+    let providerConfig = config.providers.first(where: { $0.id == action.providerID })
+
     // Find default model if not overridden
-    let defaultModel =
-      config.providers.first(where: { $0.id == action.providerID })?.defaultModel ?? "unknown"
+    let defaultModel = providerConfig?.defaultModel ?? "unknown"
     let model = action.model ?? defaultModel
+    let retryDelaySeconds = providerConfig?.retryDelaySeconds ?? 0.5
 
     // Progress states honor the Show HUD preference; errors are always shown
     // regardless (Principle VI: no silent failure).
@@ -71,7 +73,9 @@ public class ActionEngine {
           temperature: action.temperature
         )
 
-        let rawResponse = try await provider.transform(request)
+        let rawResponse = try await transformWithRetry(
+          provider: provider, request: request, retryDelaySeconds: retryDelaySeconds,
+          showProgress: showProgress)
 
         try Task.checkCancellation()
 
@@ -156,6 +160,43 @@ public class ActionEngine {
         FeedbackPresenter.shared.showError(message: error.localizedDescription)
         Logger.shared.log("Action failed: \(error)", level: .error)
       }
+    }
+  }
+
+  /// Runs the provider call, retrying once if the failure was transient.
+  ///
+  /// Only `ProviderError.isRetryable` failures are retried; everything else,
+  /// including cancellation, propagates from the first attempt so the user sees
+  /// the real error without waiting through a second doomed request. A failed
+  /// call has changed nothing in the document (the write happens later, after
+  /// the context re-check), so repeating it is safe under Principle II.
+  private func transformWithRetry(
+    provider: AIProvider,
+    request: TransformRequest,
+    retryDelaySeconds: Double,
+    showProgress: (String) -> Void
+  ) async throws -> String {
+    do {
+      return try await provider.transform(request)
+    } catch let error as ProviderError where error.isRetryable {
+      // Escape pressed during the failed attempt must abort here rather than
+      // start a second request.
+      try Task.checkCancellation()
+
+      Logger.shared.log(
+        "Provider call failed (\(error.logLabel)); retrying once.", level: .warning)
+      showProgress("Retrying...")
+
+      // Brief pause so a rate limit has a chance to clear before the second
+      // attempt. Task.sleep is cancellable, so Escape during the wait still
+      // aborts the run with nothing written. A negative or non-finite value
+      // from a hand-edited config would trap in Task.sleep, so clamp it.
+      let delay = retryDelaySeconds.isFinite ? max(0, retryDelaySeconds) : 0
+      if delay > 0 {
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      }
+
+      return try await provider.transform(request)
     }
   }
 

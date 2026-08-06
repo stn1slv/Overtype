@@ -61,6 +61,57 @@ public enum ProviderError: Error, LocalizedError {
     }
   }
 
+  /// Whether a single automatic retry is worth attempting.
+  ///
+  /// Only transient failures qualify: a dropped connection, a timeout, a rate
+  /// limit, or a server-side fault can all succeed on a second identical call.
+  /// Configuration errors (missing key, bad URL), deterministic refusals
+  /// (safety block, empty result), malformed payloads, and user cancellation
+  /// do not: retrying them fails the same way and only delays the error the
+  /// user needs to see. Pure logic, unit-tested.
+  public var isRetryable: Bool {
+    switch self {
+    case .networkError, .timeout:
+      return true
+    case .apiError(let statusCode, _):
+      // 429 (rate limited) and 5xx (server fault) are the retryable HTTP
+      // outcomes. Other 4xx codes describe the request itself, so a repeat of
+      // that same request is rejected identically.
+      return statusCode == 429 || (500...599).contains(statusCode)
+    case .apiKeyMissing, .invalidURL, .invalidResponse, .cancelled, .contextChanged,
+      .responseBlocked, .emptyResponse:
+      return false
+    }
+  }
+
+  /// A redaction-safe label for logs. `errorDescription` may embed a server
+  /// message, which can echo fragments of the submitted text, so it must not
+  /// reach `info`+ logs (Principle: privacy).
+  public var logLabel: String {
+    switch self {
+    case .timeout:
+      return "timeout"
+    case .networkError:
+      return "network error"
+    case .apiError(let statusCode, _):
+      return "HTTP \(statusCode)"
+    case .apiKeyMissing:
+      return "missing API key"
+    case .invalidURL:
+      return "invalid URL"
+    case .invalidResponse:
+      return "invalid response"
+    case .cancelled:
+      return "cancelled"
+    case .contextChanged:
+      return "context changed"
+    case .responseBlocked:
+      return "response blocked"
+    case .emptyResponse:
+      return "empty response"
+    }
+  }
+
   /// Maps a transport-layer failure from `URLSession` to a typed provider error,
   /// so every provider distinguishes cancellation (Escape) and timeout from
   /// other network failures the same way. Pure logic, unit-tested.
