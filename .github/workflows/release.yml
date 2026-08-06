@@ -47,7 +47,15 @@ jobs:
           # Title is the bare tag ("v1.3.0"), not "Release v1.3.0", so the
           # release name and the tag it points at read identically everywhere
           # they are listed side by side.
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || true
+          #
+          # `create` fails with HTTP 422 when the release already exists, which
+          # is what happens on a re-run. Fall back to `edit` instead of the
+          # older `|| true`: that swallowed the failure and left an existing
+          # release under whatever title it already had, so a re-run could not
+          # repair a wrongly named one. Dropping `|| true` also stops a genuine
+          # create failure from passing as success.
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes \
+            || gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME"
           gh release upload "$GITHUB_REF_NAME" "Overtype_${VERSION}_macos.zip" --clobber
 
       - name: Publish Homebrew Cask
