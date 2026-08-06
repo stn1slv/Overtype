@@ -108,12 +108,17 @@ future server-side default change cannot silently alter our request semantics.
   to the other two providers, so prompt templating behaves the same everywhere.
 - `max_tokens` is **required** by this API — a request without it is rejected.
   Per Clarifications it is a fixed constant, `8192` (see R9).
-- **`temperature` is deliberately absent.** Per Clarifications, current Claude
-  models reject `temperature`, `top_p`, and `top_k` with HTTP 400. Sending
-  `request.temperature` — which `TransformRequest` always carries — would fail
-  every run against the documented default model. The omission carries an inline
-  comment naming the reason, because the field is present on the request object
-  and its absence from the body otherwise looks like an oversight.
+- **`temperature` is deliberately absent.** Per Clarifications, the Opus 4.7/4.8,
+  Opus 5, Sonnet 5 and Fable 5 generation reject `temperature`, `top_p`, and
+  `top_k` with HTTP 400. Older models — including `claude-haiku-4-5`, the
+  documented default (R-default) — still accept them, so this is **not** a case
+  where the default recipe would fail today. It is that the set of models
+  accepting these parameters shrinks with each release, and sending
+  `request.temperature` conditionally means a per-model allow-list that goes
+  stale. The omission carries an inline comment naming the reason, because the
+  field is present on the request object and its absence from the body otherwise
+  looks like an oversight, and because a comment marked "do not fix without
+  reading this" must state a premise a maintainer can actually verify.
 - **No `thinking` or `effort` field is sent.** Accepted values differ per model
   (some reject `disabled`, some cap it by effort level), so sending any value
   reintroduces the per-model allow-list that Clarifications rejected for

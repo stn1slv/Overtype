@@ -195,13 +195,17 @@ configuration directly. Either way, no rebuild is required.
    selection inline while you wait, so speed matters more than raw capability
    here. Any Claude model works — set a heavier one per action if you want.
 
-3. Store your key in the macOS Keychain under the exact `keychainKey` name. The
-   in-app Settings key field currently manages the OpenAI key only, so store the
-   Anthropic key from Terminal:
+3. Store your key in the macOS Keychain under the exact `keychainKey` name.
+   Adding the provider through Settings → Providers does this for you; the
+   Terminal command below is the manual equivalent if you are editing
+   `config.json` by hand:
 
    ```sh
-   security add-generic-password -a "$USER" -s "overtype-anthropic-key" -w "YOUR_ANTHROPIC_API_KEY" -U
+   security add-generic-password -a "overtype-anthropic-key" -s "Overtype" -w "YOUR_ANTHROPIC_API_KEY" -U
    ```
+
+   The `-a` (account) value must match `keychainKey` exactly — Overtype looks the
+   item up by account, not by service.
 
 4. Point an action at the provider by setting its `"providerID"` to `"anthropic"`
    (optionally set a per-action `"model"` to override the default). The key is
@@ -209,8 +213,11 @@ configuration directly. Either way, no rebuild is required.
    logs, or the URL.
 
 > **Note:** an action's `"temperature"` is **ignored** for Anthropic runs.
-> Current Claude models reject that parameter outright, so Overtype does not
-> send it. The setting still applies to OpenAI and Gemini providers.
+> Newer Claude models (the Opus 4.7/4.8, Opus 5, Sonnet 5 and Fable 5
+> generation) reject that parameter with an HTTP 400. Older ones such as
+> `claude-haiku-4-5` still accept it, but Overtype never sends it to Anthropic
+> rather than maintaining a per-model list that would go stale on every release.
+> The setting still applies to OpenAI and Gemini providers.
 
 The shipped default configuration does not include an Anthropic provider, so a
 fresh install adds no extra provider or shortcut until you add the block above.

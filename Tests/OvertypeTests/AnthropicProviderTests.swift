@@ -156,6 +156,63 @@ final class AnthropicProviderTests: XCTestCase {
     }
   }
 
+  func testRefusalWithoutContentStillMapsToResponseBlocked() {
+    // The stop-reason check runs before the `content` guard, so a decline that
+    // omits `content` entirely still reports its reason instead of degrading to
+    // the generic `.invalidResponse`.
+    assertParseThrows(#"{"stop_reason":"refusal"}"#) { error in
+      guard case ProviderError.responseBlocked(let reason) = error else {
+        return XCTFail("expected responseBlocked, got \(error)")
+      }
+      XCTAssertEqual(reason, "refusal")
+    }
+  }
+
+  // MARK: - Request body (US1) — the deliberate omissions must stay omitted
+
+  func testRequestBodyNeverCarriesSamplingParameters() {
+    let body = AnthropicProvider.requestBody(
+      model: "claude-haiku-4-5", systemPrompt: "sys", userPrompt: "user")
+    // Load-bearing: models in the Opus 4.7+/Opus 5/Sonnet 5/Fable 5 generation
+    // reject these with HTTP 400. `requestBody` takes no temperature argument,
+    // so this asserts the seam cannot regress even if a caller wanted to pass one.
+    XCTAssertNil(body["temperature"])
+    XCTAssertNil(body["top_p"])
+    XCTAssertNil(body["top_k"])
+  }
+
+  func testRequestBodyOmitsThinkingAndEffort() {
+    let body = AnthropicProvider.requestBody(
+      model: "claude-haiku-4-5", systemPrompt: "sys", userPrompt: "user")
+    XCTAssertNil(body["thinking"])
+    XCTAssertNil(body["effort"])
+    XCTAssertNil(body["output_config"])
+  }
+
+  func testRequestBodyPutsSystemPromptAtTopLevel() {
+    // A {"role": "system"} entry inside `messages` is a validation error on this
+    // API; the system prompt must be a sibling of `messages`.
+    let body = AnthropicProvider.requestBody(
+      model: "claude-haiku-4-5", systemPrompt: "sys", userPrompt: "user")
+    XCTAssertEqual(body["system"] as? String, "sys")
+
+    guard let messages = body["messages"] as? [[String: Any]] else {
+      return XCTFail("expected a messages array, got \(String(describing: body["messages"]))")
+    }
+    XCTAssertEqual(messages.count, 1)
+    XCTAssertEqual(messages.first?["role"] as? String, "user")
+    XCTAssertEqual(messages.first?["content"] as? String, "user")
+  }
+
+  func testRequestBodyAlwaysCarriesRequiredFields() {
+    // `max_tokens` and `model` are both required; a request without either is
+    // rejected outright.
+    let body = AnthropicProvider.requestBody(
+      model: "claude-haiku-4-5", systemPrompt: "sys", userPrompt: "user")
+    XCTAssertEqual(body["model"] as? String, "claude-haiku-4-5")
+    XCTAssertEqual(body["max_tokens"] as? Int, 8192)
+  }
+
   // MARK: - Endpoint construction (US1)
 
   func testEndpointUsesDefaultBaseWhenNil() throws {

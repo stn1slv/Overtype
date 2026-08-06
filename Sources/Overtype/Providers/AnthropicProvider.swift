@@ -76,26 +76,11 @@ public class AnthropicProvider: AIProvider {
     let userPrompt = request.userPromptTemplate.replacingOccurrences(
       of: "{{text}}", with: request.text)
 
-    // DELIBERATE OMISSION, do not "fix" without reading this: `request.temperature`
-    // is NOT sent. Current Claude models reject `temperature` (and `top_p` /
-    // `top_k`) with HTTP 400, so forwarding the action's value would fail every
-    // run against the documented default model. A per-model allow-list was
-    // considered and rejected: it goes stale on every model release and turns
-    // into a hard request-validation failure mid-run. The action-level setting
-    // still applies to the OpenAI and Gemini providers.
-    //
-    // For the same reason no `thinking` or `effort` field is sent either: the
-    // accepted values differ per model (some reject "disabled", others cap it by
-    // effort level). Each model's own default applies, `maxTokens` is sized to
-    // leave room for it, and `extractText` guarantees any reasoning content that
-    // does come back is never written to the user's document.
-    let body: [String: Any] = [
-      "model": request.model,
-      "max_tokens": Self.maxTokens,
-      "system": request.systemPrompt,
-      "messages": [["role": "user", "content": userPrompt]],
-    ]
-    urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+    urlRequest.httpBody = try JSONSerialization.data(
+      withJSONObject: Self.requestBody(
+        model: request.model,
+        systemPrompt: request.systemPrompt,
+        userPrompt: userPrompt))
 
     let data: Data
     let response: URLResponse
@@ -126,6 +111,38 @@ public class AnthropicProvider: AIProvider {
     return try Self.parseResponseText(from: data)
   }
 
+  /// Builds the Messages API request body. Pure and `static` so the omissions
+  /// below are assertable in a unit test rather than guarded only by a comment.
+  ///
+  /// DELIBERATE OMISSION, do not "fix" without reading this: `temperature` is
+  /// NOT sent, and this function takes no temperature argument so it cannot be.
+  /// The Opus 4.7/4.8, Opus 5, Sonnet 5, and Fable 5 generation reject
+  /// `temperature` (and `top_p` / `top_k`) with HTTP 400. Older models such as
+  /// `claude-haiku-4-5` — currently the documented default — still accept them,
+  /// so this is not "every model would fail today"; it is that the set of models
+  /// which accept them shrinks with each release. Sending the value
+  /// conditionally would mean a per-model allow-list that goes stale on every
+  /// release and turns into a hard request-validation failure mid-run, so it is
+  /// dropped for all Anthropic requests. The action-level setting still applies
+  /// to the OpenAI and Gemini providers.
+  ///
+  /// For the same reason no `thinking` or `effort` field is sent either: the
+  /// accepted values differ per model (some reject "disabled", others cap it by
+  /// effort level). Each model's own default applies, `maxTokens` is sized to
+  /// leave room for it, and `extractText` guarantees any reasoning content that
+  /// does come back is never written to the user's document.
+  static func requestBody(model: String, systemPrompt: String, userPrompt: String) -> [String: Any]
+  {
+    return [
+      "model": model,
+      "max_tokens": maxTokens,
+      // `system` is a top-level field. A {"role": "system"} entry inside
+      // `messages` is a validation error on this API.
+      "system": systemPrompt,
+      "messages": [["role": "user", "content": userPrompt]],
+    ]
+  }
+
   /// Builds `<base>messages`.
   ///
   /// Takes no model argument: unlike Gemini, Anthropic carries the model in the
@@ -147,17 +164,22 @@ public class AnthropicProvider: AIProvider {
       throw ProviderError.invalidResponse
     }
 
-    guard let content = json["content"] as? [[String: Any]] else {
-      throw ProviderError.invalidResponse
-    }
-
     // Non-normal stop reasons are reported specifically. Guarded on the field
     // being present so a body without one falls through to extraction rather
     // than erroring.
+    //
+    // Checked BEFORE the `content` guard on purpose: a decline that produced no
+    // output normally still carries `"content": []`, but a body that omits
+    // `content` entirely would otherwise degrade to the generic
+    // `.invalidResponse` and lose the reason the user needs to see.
     if let stopReason = json["stop_reason"] as? String,
       !normalStopReasons.contains(stopReason)
     {
       throw ProviderError.responseBlocked(reason: blockReason(stopReason, from: json))
+    }
+
+    guard let content = json["content"] as? [[String: Any]] else {
+      throw ProviderError.invalidResponse
     }
 
     let text = extractText(from: content)

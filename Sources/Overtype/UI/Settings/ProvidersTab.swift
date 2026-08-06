@@ -16,9 +16,9 @@ public struct ProvidersTab: View {
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
 
-  /// Kinds selectable in the form. Anthropic and Ollama are unimplemented stubs
-  /// in ProviderRegistry and stay hidden; a hand-edited config using one of
-  /// them still shows its current kind so editing does not silently change it.
+  /// Kinds selectable in the form. Ollama is still an unimplemented stub in
+  /// ProviderRegistry and stays hidden; a hand-edited config using it still
+  /// shows its current kind so editing does not silently change it.
   private var selectableKinds: [ProviderKind] {
     var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic]
     if let current = editingProvider?.kind, !kinds.contains(current) {

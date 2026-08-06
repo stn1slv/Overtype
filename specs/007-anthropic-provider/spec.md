@@ -12,7 +12,7 @@
 
 ### Session 2026-08-06
 
-- Q: Overtype actions carry a per-action creativity setting (temperature), but current Claude models reject that field with an HTTP 400. How should an Anthropic run handle it? → A: Never send it. Anthropic requests always omit the creativity setting, so the provider works against every current Claude model. The action-level setting continues to apply unchanged to other providers, and the reason is recorded at the point of omission so it is not "simplified" back in later. The README recipe must state that the setting does not apply to Anthropic. A per-model allow-list was rejected because it goes stale on every model release and turns into a hard request-validation failure mid-run.
+- Q: Overtype actions carry a per-action creativity setting (temperature), but newer Claude models reject that field with an HTTP 400. How should an Anthropic run handle it? → A: Never send it. Anthropic requests always omit the creativity setting, so the provider works against every current Claude model. (Correction, 2026-08-06: the question as originally posed said "current Claude models reject" it. More precisely, the Opus 4.7/4.8, Opus 5, Sonnet 5 and Fable 5 generation reject it; older models including `claude-haiku-4-5`, the documented default, still accept it. The decision is unchanged — the set of models accepting it shrinks each release, and the alternative is a per-model allow-list — but the premise was overstated and is corrected here.) The action-level setting continues to apply unchanged to other providers, and the reason is recorded at the point of omission so it is not "simplified" back in later. The README recipe must state that the setting does not apply to Anthropic. A per-model allow-list was rejected because it goes stale on every model release and turns into a hard request-validation failure mid-run.
 - Q: Which Claude model should the documented Anthropic provider recipe use as its `defaultModel`? → A: `claude-haiku-4-5`. This follows the precedent set by 004, which chose the fast/lite tier (`gemini-3.5-flash-lite`) rather than a flagship: Overtype rewrites a selection inline while the user waits, so latency is the product. It also avoids the reasoning-leakage and budget-contention risks by default, because this model does not produce reasoning content unless asked. Users remain free to configure any Claude model, so the reasoning filter (FR-008) is still required.
 - Q: Anthropic requires a response length limit on every request, and no existing provider or action field expresses one. How should it be supplied? → A: A single fixed constant defined by the provider (`8192`), with no schema change and no user-facing configuration. This mirrors how the Gemini provider hardcodes its base URL. The value is large enough to cover any realistic selection rewrite, small enough to stay below the size at which a non-streaming request risks a transport timeout, and leaves headroom on models that spend part of the same budget on reasoning. Scaling the limit from the selection length was rejected as guesswork without a tokenizer; adding a configurable field was rejected as widening the feature past the provider contract for a value no other provider uses.
 
@@ -174,9 +174,10 @@ unchanged; repeat with an unknown model name.
   MUST be large enough that a realistic selection rewrite is not truncated, and
   MUST leave headroom for models that consume part of the same budget on
   reasoning. It MUST NOT introduce a configuration field or a Settings control.
-- **FR-007**: The system MUST NOT send request fields that current Claude models
-  reject, so that a correctly configured provider succeeds against the documented
-  default model rather than failing with a request-validation error.
+- **FR-007**: The system MUST NOT send request fields that any currently
+  available Claude model rejects, so that a correctly configured provider
+  succeeds against whichever model the user selects rather than failing with a
+  request-validation error.
   Specifically, an Anthropic request MUST NOT carry the action's creativity
   (temperature) setting under any circumstance, including when the action
   explicitly sets one. The system MUST NOT maintain a per-model allow-list for
@@ -276,8 +277,11 @@ unchanged; repeat with an unknown model name.
   model's own default applies, and the fixed response-length limit is sized to
   leave room for it.
 - The per-action creativity setting is never transmitted to Anthropic (FR-007,
-  resolved in Clarifications). Users who set it on an Anthropic action will see
-  it ignored; the README recipe must say so.
+  resolved in Clarifications). This is a forward-looking choice rather than a
+  present necessity: the documented default model still accepts the parameter,
+  but the newer generation does not, and the alternative is a per-model
+  allow-list. Users who set it on an Anthropic action will see it ignored; the
+  README recipe must say so.
 - Anthropic is added via the Settings picker and a documented configuration
   recipe rather than pre-seeded in the shipped default config; the default
   first-run configuration is unchanged by this feature, matching how Gemini was
