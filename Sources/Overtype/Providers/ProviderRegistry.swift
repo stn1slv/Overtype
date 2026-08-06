@@ -20,8 +20,7 @@ public class ProviderRegistry {
       case .anthropic:
         providers[config.id] = AnthropicProvider(config: config)
       case .ollama:
-        // To be implemented in US3
-        break
+        providers[config.id] = OllamaProvider(config: config)
       case .gemini:
         providers[config.id] = GeminiProvider(config: config)
       }
