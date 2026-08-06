@@ -67,7 +67,8 @@ appended, mirroring `AnthropicProvider.endpointURL(base:)`.
 }
 ```
 
-Overtype reads exactly one field: `message.content`.
+Overtype reads two fields: `message.content` for the answer, and
+`prompt_eval_count` to verify the prompt was not clipped.
 
 - `message.thinking` is **never read**. It carries model reasoning and must not
   reach the user's document (FR-009 layer 1). This is an allow-list, not a
@@ -76,7 +77,11 @@ Overtype reads exactly one field: `message.content`.
   `stop_reason`, Ollama has no refusal category here; a non-empty answer is a
   success regardless. An empty or whitespace-only `content` (after layer 2)
   becomes `.emptyResponse`.
-- Timing and token-count fields are ignored.
+- `prompt_eval_count` is compared against the same prompt budget as the
+  pre-send check. A count above it means the prompt was truncated, and the
+  answer is refused with `inputTooLargeForContext` rather than written. This is
+  a backstop; the pre-send check is the primary guard. Other timing and
+  token-count fields are ignored.
 - A body that is not an object, or has no `message.content` string, is
   `.invalidResponse`.
 
@@ -107,15 +112,21 @@ leading whitespace and newlines before the empty check.
 
 ## Pre-send refusal (FR-010b)
 
-Before a request is built, the provider compares the selection length against
-`maxSafeInputCharacters` (6000) and throws `inputTooLargeForContext(limit:)` if
-it is larger. Nothing is sent, so this is not a wire condition — it is listed
+Before a request is built, the provider estimates the tokens in the composed
+prompt (system prompt plus the rendered user prompt, `utf8.count` each — see
+research R13 for why bytes and not characters) and throws
+`inputTooLargeForContext(limit:)` if the total exceeds the budget, which is
+`min(6000, grantedWindow / 2)`. Nothing is sent, so this is not a wire condition — it is listed
 here because it is part of the provider's observable contract.
 
-| Selection length | Result |
+| Estimated prompt tokens | Result |
 |---|---|
-| ≤ 6000 characters | Request is built and sent |
-| > 6000 characters | `inputTooLargeForContext(limit: 6000)`, no request, selection unchanged, no retry |
+| ≤ budget | Request is built and sent |
+| > budget | `inputTooLargeForContext(limit: budget)`, no request, selection unchanged, no retry |
+
+The budget is `min(6000, grantedWindow / 2)`: measured against a 2048-window
+model, the server keeps only ~1026 prompt tokens (half the window) and answers
+from that, silently.
 
 ## Failure responses
 
@@ -149,4 +160,13 @@ Not sent, each for a recorded reason:
 | `options.num_predict` | No output cap is imposed; the model's own default applies, matching `GeminiProvider`, which also sends no output cap |
 
 Not read: `message.thinking`, `message.tool_calls`, `message.images`,
-`done_reason`, and all timing/token fields.
+`done_reason`, and all timing/token fields except `prompt_eval_count`.
+
+## Companion endpoint: `POST {base}/api/show`
+
+Sends `{"model": "<name>"}` and reads `model_info.<arch>.context_length` (matched
+by suffix, since the key is architecture-prefixed). Used once per model, cached,
+to learn the window the service will actually grant — Ollama clamps `num_ctx`
+down to a model's own maximum, so the requested value is not a safe basis for
+the truncation check. Carries no user text. A failure is non-fatal: the check
+falls back to the requested window.

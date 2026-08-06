@@ -33,7 +33,7 @@ public class OllamaProvider: AIProvider {
   /// input, so the window must fit roughly twice the input, and it must do so
   /// for the worst-case script, not for English.
   ///
-  /// Sizing, worked out against `maxSafeInputCharacters` (6000):
+  /// Sizing, worked out against `maxSafePromptTokens` (6000):
   ///   - worst case is a script that tokenises at about 1 token per character
   ///     (Chinese, Japanese, Korean), so 6000 characters of input is up to
   ///     ~6000 tokens, not the ~2200 an English estimate would suggest;
@@ -60,31 +60,74 @@ public class OllamaProvider: AIProvider {
   /// diverge from them and belongs in a spec revision, not a silent change here.
   static let contextWindowTokens = 16384
 
-  /// Largest selection this provider will send, in characters.
+  /// Largest prompt this provider will send, in estimated tokens.
   ///
   /// `contextWindowTokens` covers the *default* action cap, but
   /// `maxInputCharacters` is user-adjustable up to 20000, so the window alone
-  /// is not a guarantee. This constant closes that hole: a selection above it is
+  /// is not a guarantee. This constant closes that hole: a prompt above it is
   /// refused before anything is sent (FR-010b).
   ///
-  /// Derivation, deliberately done at ~1 token per CHARACTER rather than at an
-  /// English prose ratio: `text.count` counts Characters, and the check has no
-  /// idea what script it is looking at. A ratio taken from English (~2.7
-  /// characters per token) is wrong by roughly 3x for Chinese, Japanese and
-  /// Korean, and being wrong in that direction is precisely the failure this
-  /// constant exists to prevent — the prompt would be silently shortened by the
-  /// service and a partial rewrite would replace the whole selection.
+  /// Derivation, deliberately done at ~1 token per unit rather than at an
+  /// English prose ratio: a ratio taken from English (~2.7 characters per token)
+  /// is wrong by roughly 3x for Chinese, Japanese and Korean, and being wrong in
+  /// that direction is precisely the failure this constant exists to prevent —
+  /// the prompt would be silently shortened by the service and a partial rewrite
+  /// would replace the whole selection.
   ///
-  /// So: 6000 characters is at most ~6000 tokens of prompt, needs ~6000 more
-  /// for a same-length rewrite, plus a few hundred for the system prompt, and
-  /// `contextWindowTokens` (16384) covers that. 6000 also sits comfortably above
-  /// the 5000-character default action cap, so an ordinary selection is never
-  /// refused; only a user who raised that cap can reach this bound.
+  /// So: 6000 estimated tokens of prompt needs ~6000 more for a same-length
+  /// rewrite, and `contextWindowTokens` (16384) covers that with margin. For
+  /// Latin and CJK text an estimated token is one character, so 6000 also sits
+  /// above the 5000-character default action cap and an ordinary selection is
+  /// never refused — though the system prompt counts toward the same budget, so
+  /// an action with a very long system prompt narrows what is left for the
+  /// selection.
   ///
   /// Erring LOW is the safe direction and is why this is a fixed constant rather
   /// than a per-request estimate: a low bound refuses slightly early and
   /// visibly, a high one lets the service shorten the user's text silently.
-  static let maxSafeInputCharacters = 6000
+  static let maxSafePromptTokens = 6000
+
+  /// Conservative upper bound on the tokens a string will occupy.
+  ///
+  /// `String.count` counts grapheme clusters, and a cluster can hold arbitrarily
+  /// many scalars: `"👨‍👩‍👧‍👦".count` is 1 but the cluster is 25 UTF-8 bytes, and one
+  /// Devanagari or Vietnamese cluster is routinely 6-12. Counting clusters
+  /// would therefore let a 6000-"character" Hindi selection carry tens of
+  /// thousands of tokens straight past the guard — the opposite of the
+  /// conservative direction this bound is supposed to err in.
+  ///
+  /// The estimate is the UTF-8 byte count, which is the true upper bound: a
+  /// byte-level BPE token covers at least one byte, so a string can never cost
+  /// more tokens than it has bytes.
+  ///
+  /// MEASURED, not assumed (2026-08-06, Ollama 0.32.5 / tinyllama). An earlier
+  /// version of this used `max(count, utf8.count / 3)` on the theory that
+  /// multi-byte scripts average three-plus bytes per token. That is true for
+  /// *common* characters, and false where the tokenizer falls back to bytes:
+  /// 100 randomly chosen CJK characters (300 bytes) were reported by the server
+  /// as **328 tokens** — about one token per byte. The old estimate would have
+  /// called that 100, understating it by 3x, in the direction that loses the
+  /// user's text.
+  ///
+  /// Consequence, stated plainly because it is user-visible: the budget is
+  /// effectively in bytes, so it allows roughly 6000 Latin characters but only
+  /// about 2000 CJK ones. That asymmetry is real rather than an artefact — those
+  /// characters genuinely cost that much — and the README says so.
+  static func estimatedTokens(_ text: String) -> Int {
+    return text.utf8.count
+  }
+
+  /// Effective context window per model, as reported by the service.
+  ///
+  /// `contextWindowTokens` is what we ASK for; it is not necessarily what we
+  /// get. Ollama clamps `num_ctx` down to a model's own trained maximum, so a
+  /// model built at 4096 silently runs at 4096 no matter what we send — and a
+  /// truncation check written against the requested value would then never fire
+  /// for exactly the models most likely to truncate. Looked up once per model
+  /// and cached; the lock is here because `ProviderRegistry` hands the same
+  /// instance to every run.
+  private var effectiveWindowCache: [String: Int] = [:]
+  private let cacheLock = NSLock()
 
   public init(config: ProviderConfig) {
     self.config = config
@@ -100,7 +143,13 @@ public class OllamaProvider: AIProvider {
     let userPrompt = request.userPromptTemplate.replacingOccurrences(
       of: "{{text}}", with: request.text)
 
-    // First, before a URL, a body, or the Keychain is touched: an oversized
+    // Resolved before the request so an oversized prompt is refused rather than
+    // silently clipped by the server. Cached per model, so only the first run
+    // pays the extra round trip.
+    let granted = await grantedContextWindow(model: request.model)
+    let budget = Self.promptBudget(grantedWindow: granted)
+
+    // Before a URL, a body, or the Keychain is touched: an oversized
     // request costs nothing and reaches nothing.
     //
     // Measured on what is actually SENT, not on `request.text`. Two ways the
@@ -108,7 +157,8 @@ public class OllamaProvider: AIProvider {
     // every `{{text}}`, so a template naming it twice doubles the input, and the
     // system prompt is user-editable and uncapped. Checking the selection would
     // let either exceed the window while the guard stayed silent.
-    try Self.checkInputSize(systemPrompt: request.systemPrompt, userPrompt: userPrompt)
+    try Self.checkInputSize(
+      systemPrompt: request.systemPrompt, userPrompt: userPrompt, budgetTokens: budget)
 
     let url = try Self.endpointURL(base: config.baseURL)
 
@@ -165,7 +215,72 @@ public class OllamaProvider: AIProvider {
         message: Self.extractErrorMessage(from: data))
     }
 
-    return try Self.parseResponseText(from: data)
+    return try Self.parseResponseText(from: data, windowTokens: budget)
+  }
+
+  /// The window the service will actually use for this model, or nil if it
+  /// could not be established.
+  ///
+  /// Sends only the model name — no selection, no prompt — to the same endpoint
+  /// the transformation goes to, so it contacts no new host (FR-018). A failure
+  /// here is never fatal: the caller falls back to the requested window, which
+  /// is what the check did before this lookup existed.
+  private func grantedContextWindow(model: String) async -> Int? {
+    cacheLock.lock()
+    let cached = effectiveWindowCache[model]
+    cacheLock.unlock()
+    if let cached { return cached }
+
+    guard let url = try? Self.showEndpointURL(base: config.baseURL) else { return nil }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+    if let header = Self.authorizationHeader(forKeychainKey: config.keychainKey) {
+      request.addValue(header, forHTTPHeaderField: "Authorization")
+    }
+    guard let body = try? JSONSerialization.data(withJSONObject: ["model": model]) else {
+      return nil
+    }
+    request.httpBody = body
+
+    guard let (data, response) = try? await urlSession.data(for: request),
+      (response as? HTTPURLResponse)?.statusCode == 200,
+      let window = Self.parseContextLength(from: data)
+    else {
+      return nil
+    }
+
+    cacheLock.lock()
+    effectiveWindowCache[model] = window
+    cacheLock.unlock()
+    return window
+  }
+
+  /// Builds `<base>/api/show`.
+  static func showEndpointURL(base: URL?) throws -> URL {
+    let baseString = base?.absoluteString ?? defaultBaseURLString
+    let normalized = baseString.hasSuffix("/") ? baseString : baseString + "/"
+    guard let url = URL(string: "\(normalized)api/show") else {
+      throw ProviderError.invalidURL
+    }
+    return url
+  }
+
+  /// Reads the context length out of an `/api/show` body.
+  ///
+  /// The key is architecture-prefixed (`llama.context_length`,
+  /// `qwen2.context_length`, …), so it is matched by suffix rather than by a
+  /// list of architectures that would go stale. Pure logic, unit-tested.
+  static func parseContextLength(from data: Data) -> Int? {
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let info = json["model_info"] as? [String: Any]
+    else {
+      return nil
+    }
+    for (key, value) in info where key.hasSuffix(".context_length") {
+      if let length = value as? Int, length > 0 { return length }
+    }
+    return nil
   }
 
   /// The address to name in `.serviceUnreachable`.
@@ -180,16 +295,37 @@ public class OllamaProvider: AIProvider {
     return "\(host):\(port)"
   }
 
-  /// Refuses a request whose prompt exceeds `maxSafeInputCharacters` (FR-010b).
+  /// Refuses a request whose prompt exceeds `maxSafePromptTokens` (FR-010b).
   ///
   /// Takes the composed prompt rather than the raw selection, because the
   /// selection is not what reaches the model: the action's template may repeat
   /// `{{text}}`, and the system prompt is user-editable. Pure logic,
   /// unit-tested.
-  static func checkInputSize(systemPrompt: String, userPrompt: String) throws {
-    if systemPrompt.count + userPrompt.count > maxSafeInputCharacters {
-      throw ProviderError.inputTooLargeForContext(limit: maxSafeInputCharacters)
+  static func checkInputSize(
+    systemPrompt: String, userPrompt: String, budgetTokens: Int = maxSafePromptTokens
+  ) throws {
+    let promptTokens = estimatedTokens(systemPrompt) + estimatedTokens(userPrompt)
+    if promptTokens > budgetTokens {
+      throw ProviderError.inputTooLargeForContext(limit: budgetTokens)
     }
+  }
+
+  /// The prompt budget for a model, given the window the service granted it.
+  ///
+  /// MEASURED, not assumed (2026-08-06, Ollama 0.32.5 / tinyllama, whose window
+  /// is 2048): when a prompt exceeds the window, the server does not error — it
+  /// keeps roughly HALF the window and answers from that. Prompts of 800, 1200,
+  /// 2000 and 4000 characters all came back reporting exactly 1026 evaluated
+  /// tokens, while 400 characters reported 1194 untouched. So the usable prompt
+  /// budget is half the window, and the other half is what the answer is
+  /// generated into — which is also what an in-place rewrite needs.
+  ///
+  /// This is why the fixed `maxSafePromptTokens` alone was not enough: on a
+  /// model whose window is below 12000, half of it is less than that constant,
+  /// and the difference was silently truncated.
+  static func promptBudget(grantedWindow: Int?) -> Int {
+    guard let grantedWindow else { return maxSafePromptTokens }
+    return min(maxSafePromptTokens, max(1, grantedWindow / 2))
   }
 
   /// Builds the `Authorization` header value, or nil when the provider has no
@@ -281,7 +417,9 @@ public class OllamaProvider: AIProvider {
   /// user's document (FR-009 layer 1). Mirrors
   /// `AnthropicProvider.extractText`, which filters to `text` blocks for the
   /// same reason.
-  static func parseResponseText(from data: Data) throws -> String {
+  static func parseResponseText(from data: Data, windowTokens: Int = contextWindowTokens) throws
+    -> String
+  {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let message = json["message"] as? [String: Any],
       let content = message["content"] as? String
@@ -299,10 +437,16 @@ public class OllamaProvider: AIProvider {
     // prompt clipped to the window reports a count at the window. Discarding an
     // answer that was produced from a truncated prompt costs the user a
     // visible error; writing it costs them part of their text.
+    //
+    // `windowTokens` is the window the service GRANTED, not the one we asked
+    // for. Comparing against the request would make this check dead for every
+    // model whose own maximum is below `contextWindowTokens`, because Ollama
+    // clamps `num_ctx` down to it — and those are precisely the models that
+    // truncate.
     if let promptTokens = json["prompt_eval_count"] as? Int,
-      promptTokens >= contextWindowTokens
+      promptTokens > windowTokens
     {
-      throw ProviderError.inputTooLargeForContext(limit: maxSafeInputCharacters)
+      throw ProviderError.inputTooLargeForContext(limit: maxSafePromptTokens)
     }
 
     let text = stripLeadingReasoningBlock(content)

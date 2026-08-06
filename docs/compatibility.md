@@ -203,7 +203,7 @@ before this feature ships in a release.
 | O11 | Only the configured address is contacted | No other host reached | pending (needs manual run with a network monitor) |
 | O12 | Reasoning model writes no reasoning | Only the answer; no reasoning text, no `<think>` markers | **PASS** (provider-level, `deepseek-r1:1.5b`). See the note below |
 | O13 | Logs at the default level | No selected text or model output | pending (needs manual run) |
-| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (211 tests, 0 failures); live cloud run pending |
+| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (226 tests, 0 failures); live cloud run pending |
 | O15 | Full-size selection at the 5000-character default | Rewritten whole, no silent shortening | pending (needs manual run) |
 | O16 | Selection above 6000 characters | Specific error naming the limit; nothing sent; no retry | PASS (`OllamaProviderTests`, `checkInputSize`); end-to-end pending |
 
@@ -225,3 +225,42 @@ before this feature ships in a release.
 > (`model 'x' not found`, without the documented "try pulling it first" suffix),
 > which is why `isModelNotFound` matches on `"not found"` plus HTTP 404 rather
 > than on the full documented sentence.
+
+#### Ollama context-window behaviour (measured 2026-08-06)
+
+Two properties of the service were established by measurement rather than
+assumed, because the feature's non-destructiveness guarantee depends on them and
+both turned out to contradict the reasonable-sounding assumption. Setup: Ollama
+`0.32.5`, model `tinyllama` (`/api/show` reports `llama.context_length: 2048`),
+`num_ctx: 16384` requested on every call.
+
+**1. An over-long prompt is truncated to half the window, silently.**
+
+| Input characters | `prompt_eval_count` | Interpretation |
+|---|---|---|
+| 100 | 328 | evaluated whole |
+| 400 | 1194 | evaluated whole |
+| 800 | 1026 | truncated |
+| 1200 | 1026 | truncated |
+| 2000 | 1026 | truncated |
+| 4000 | 1026 | truncated |
+
+`done_reason` was `stop` in every case — the truncation is not reported. 1026 is
+half of the 2048 window plus special tokens. Overtype therefore treats
+`grantedWindow / 2` as the usable prompt budget and refuses a larger prompt
+before sending.
+
+This also falsified a first attempt at the guard, which compared
+`prompt_eval_count` against the *full* granted window: a real truncation reports
+1026 against a window of 2048, so the check never fired. It was caught by running
+it against this model, not by review.
+
+**2. The tokenizer falls back to bytes, so characters are not a proxy for
+tokens.** 100 randomly chosen CJK characters (300 UTF-8 bytes) cost **328
+tokens** — about one per byte, not one per character. Overtype's size estimate
+counts UTF-8 bytes for this reason.
+
+**Regression check**: if a future Ollama version changes either behaviour, the
+symptom will be Ollama actions refusing selections that used to work (harmless,
+visible) rather than silently rewriting fragments. Re-run the table above before
+changing `promptBudget` or `estimatedTokens`.

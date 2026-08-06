@@ -190,7 +190,7 @@ four small edits in one Settings view, a new test file, and doc updates.
   `Authorization` header, never in the URL, never written to config,
   `UserDefaults`, logs, error messages, or the UI. Selected text and output are
   logged only via `sanitizedLog()` at debug. Failures are logged via
-  `logLabel`, and the two new labels carry no payload. The typed payloads that
+  `logLabel`, and the three new labels carry no payload. The typed payloads that
   *are* shown to the user (address, model name) both come from the user's own
   configuration, never from server-authored text. The only endpoint contacted is
   the configured one, which in the documented setup is the user's own machine —
@@ -211,7 +211,7 @@ four small edits in one Settings view, a new test file, and doc updates.
   narrow `NSAllowsLocalNetworking` is used and `NSAllowsArbitraryLoads` is
   rejected outright.
 - **VIII. Verification Discipline**: PASS. Pure logic gets unit tests, including
-  both reasoning layers and the retry classification of the two new cases. The
+  both reasoning layers and the retry classification of the three new cases. The
   real HTTP boundary, the ATS behaviour of the bundle, and the offline run get
   the manual acceptance procedure in `quickstart.md`, not mocks that assert on
   themselves. One honest limit is recorded there: acceptance item O12 (a real

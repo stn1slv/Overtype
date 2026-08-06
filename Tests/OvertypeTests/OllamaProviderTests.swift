@@ -85,14 +85,14 @@ final class OllamaProviderTests: XCTestCase {
   // MARK: - checkInputSize (FR-010b)
 
   func testInputAtTheLimitIsAccepted() {
-    let text = String(repeating: "a", count: OllamaProvider.maxSafeInputCharacters)
+    let text = String(repeating: "a", count: OllamaProvider.maxSafePromptTokens)
     XCTAssertNoThrow(try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: text))
   }
 
   func testTheSystemPromptCountsTowardTheLimit() {
     // The bound must measure what is sent. A selection just under the limit
     // plus a long system prompt still overflows the window.
-    let userPrompt = String(repeating: "a", count: OllamaProvider.maxSafeInputCharacters - 10)
+    let userPrompt = String(repeating: "a", count: OllamaProvider.maxSafePromptTokens - 10)
     XCTAssertThrowsError(
       try OllamaProvider.checkInputSize(
         systemPrompt: String(repeating: "s", count: 100), userPrompt: userPrompt))
@@ -109,7 +109,7 @@ final class OllamaProviderTests: XCTestCase {
   }
 
   func testInputAboveTheLimitIsRefusedWithTheLimitAttached() {
-    let text = String(repeating: "a", count: OllamaProvider.maxSafeInputCharacters + 1)
+    let text = String(repeating: "a", count: OllamaProvider.maxSafePromptTokens + 1)
     do {
       try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: text)
       XCTFail("expected an oversized selection to be refused")
@@ -117,7 +117,7 @@ final class OllamaProviderTests: XCTestCase {
       guard case .inputTooLargeForContext(let limit) = error else {
         return XCTFail("expected inputTooLargeForContext, got \(error)")
       }
-      XCTAssertEqual(limit, OllamaProvider.maxSafeInputCharacters)
+      XCTAssertEqual(limit, OllamaProvider.maxSafePromptTokens)
     } catch {
       XCTFail("expected ProviderError, got \(error)")
     }
@@ -131,8 +131,8 @@ final class OllamaProviderTests: XCTestCase {
     // Worst case is a script tokenising at ~1 token per character (CJK), and an
     // in-place rewrite is about as long as its input, so the window must hold
     // input + answer + the system prompt.
-    let worstCaseInputTokens = OllamaProvider.maxSafeInputCharacters
-    let worstCaseAnswerTokens = OllamaProvider.maxSafeInputCharacters
+    let worstCaseInputTokens = OllamaProvider.maxSafePromptTokens
+    let worstCaseAnswerTokens = OllamaProvider.maxSafePromptTokens
     let systemPromptAllowance = 512
 
     XCTAssertLessThanOrEqual(
@@ -143,15 +143,184 @@ final class OllamaProviderTests: XCTestCase {
   }
 
   func testTheSizeBoundNeverRefusesASelectionTheDefaultActionCapAllows() {
-    // If the provider bound dropped below the default action cap, ordinary
-    // out-of-the-box selections would start being refused. Read the default
-    // from ActionConfig rather than hardcoding it, so raising that default
-    // fails this test instead of silently breaking the invariant.
+    // Drives the guard rather than comparing two constants: the previous
+    // version asserted `maxSafePromptTokens >= defaultCap` and so would have
+    // passed even when the shipped guard refused a default-cap selection,
+    // because the system prompt also counts toward the budget.
     let defaultCap = ActionConfig(
       id: "t", title: "t", enabled: true, providerID: "p", systemPrompt: "",
       userPromptTemplate: "{{text}}"
     ).maxInputCharacters
-    XCTAssertGreaterThanOrEqual(OllamaProvider.maxSafeInputCharacters, defaultCap)
+
+    // The system prompt actually shipped, read from the default configuration
+    // rather than copied, so a longer default prompt fails this test.
+    guard
+      let shipped = try? JSONDecoder().decode(
+        AppConfig.self, from: Data(DefaultConfig.defaultConfigJSON.utf8)),
+      let action = shipped.actions.first
+    else {
+      return XCTFail("could not read the shipped default configuration")
+    }
+
+    XCTAssertNoThrow(
+      try OllamaProvider.checkInputSize(
+        systemPrompt: action.systemPrompt,
+        userPrompt: String(repeating: "a", count: defaultCap)),
+      "a full default-cap selection must not be refused with the shipped system prompt")
+  }
+
+  func testALongSystemPromptEatsIntoTheSelectionAllowance() {
+    // Documents the real relationship rather than pretending it does not exist:
+    // the budget is shared, so a long system prompt lowers what is left for the
+    // selection. The README says so; this pins it.
+    let longSystemPrompt = String(repeating: "s", count: 2000)
+    XCTAssertThrowsError(
+      try OllamaProvider.checkInputSize(
+        systemPrompt: longSystemPrompt,
+        userPrompt: String(repeating: "a", count: 5000)))
+  }
+
+  // MARK: - estimatedTokens
+
+  func testAsciiIsEstimatedByCharacterCount() {
+    XCTAssertEqual(OllamaProvider.estimatedTokens(String(repeating: "a", count: 100)), 100)
+  }
+
+  func testCJKIsEstimatedByItsByteCost() {
+    // Measured against the real service: 100 randomly chosen CJK characters
+    // (300 bytes) were reported as 328 evaluated tokens, i.e. roughly one token
+    // per BYTE via tokenizer byte-fallback — not one per character. The estimate
+    // must therefore count bytes, or it understates these by 3x in the direction
+    // that loses the user's text.
+    let cjk = String(repeating: "\u{732B}", count: 100)
+    XCTAssertEqual(cjk.utf8.count, 300)
+    XCTAssertEqual(OllamaProvider.estimatedTokens(cjk), 300)
+  }
+
+  func testTheEstimateIsNeverBelowTheRealTokenCostMeasuredOnTheService() {
+    // Pins the observation above as a regression guard: 300 bytes of CJK cost
+    // 328 tokens on tinyllama. An estimate below the real cost is the failure
+    // mode that matters, so assert the estimate is in that ballpark rather than
+    // an order of magnitude under it.
+    let cjk = String(
+      (0..<100).compactMap { Unicode.Scalar(0x4E00 + UInt32($0)).map(Character.init) })
+    XCTAssertGreaterThanOrEqual(OllamaProvider.estimatedTokens(cjk), 300)
+  }
+
+  // MARK: - promptBudget
+
+  func testBudgetIsHalfTheWindowWhenTheWindowIsSmall() {
+    // Measured: a model with a 2048 window keeps ~1026 prompt tokens when it
+    // truncates, i.e. half. The budget must follow the window, not the constant.
+    XCTAssertEqual(OllamaProvider.promptBudget(grantedWindow: 2048), 1024)
+    XCTAssertEqual(OllamaProvider.promptBudget(grantedWindow: 4096), 2048)
+  }
+
+  func testBudgetIsCappedByTheFixedConstantForLargeWindows() {
+    XCTAssertEqual(
+      OllamaProvider.promptBudget(grantedWindow: 131_072), OllamaProvider.maxSafePromptTokens)
+    XCTAssertEqual(
+      OllamaProvider.promptBudget(grantedWindow: 16384), OllamaProvider.maxSafePromptTokens)
+  }
+
+  func testBudgetFallsBackToTheConstantWhenTheWindowIsUnknown() {
+    XCTAssertEqual(
+      OllamaProvider.promptBudget(grantedWindow: nil), OllamaProvider.maxSafePromptTokens)
+  }
+
+  func testASmallWindowModelRefusesAPromptTheFixedConstantWouldAllow() {
+    // The hole the granted-window lookup closes: 3000 bytes passes the fixed
+    // 6000 budget, but a 2048-window model only keeps ~1024 prompt tokens.
+    let text = String(repeating: "a", count: 3000)
+    XCTAssertNoThrow(try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: text))
+    XCTAssertThrowsError(
+      try OllamaProvider.checkInputSize(
+        systemPrompt: "", userPrompt: text,
+        budgetTokens: OllamaProvider.promptBudget(grantedWindow: 2048)))
+  }
+
+  func testGraphemeClustersAreNotCountedAsOneToken() {
+    // The hole this estimate closes: `count` is 1 for a 25-byte cluster, so a
+    // character count would wave 6000 of these straight past the guard.
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+    XCTAssertEqual(family.count, 1)
+    XCTAssertGreaterThan(OllamaProvider.estimatedTokens(family), 1)
+  }
+
+  func testAnEmojiSelectionUnderTheCharacterCountIsStillRefused() {
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}\u{200D}\u{1F466}"
+    let selection = String(repeating: family, count: 3000)
+    XCTAssertEqual(selection.count, 3000, "well under the 6000 bound by character count")
+    XCTAssertThrowsError(
+      try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: selection),
+      "a selection of multi-byte clusters must be refused, not silently truncated by the service")
+  }
+
+  func testCombiningMarksAreCountedHonestly() {
+    // One base letter plus 50 combining acutes: `count` is 1, 101 UTF-8 bytes.
+    let stacked = "a" + String(repeating: "\u{0301}", count: 50)
+    XCTAssertEqual(stacked.count, 1)
+    XCTAssertGreaterThan(OllamaProvider.estimatedTokens(stacked), 1)
+  }
+
+  // MARK: - Granted context window (/api/show)
+
+  func testShowEndpointIsBuiltFromTheSameBase() throws {
+    XCTAssertEqual(
+      try OllamaProvider.showEndpointURL(base: nil).absoluteString,
+      "http://localhost:11434/api/show")
+    XCTAssertEqual(
+      try OllamaProvider.showEndpointURL(base: URL(string: "http://box:9999/")).absoluteString,
+      "http://box:9999/api/show")
+  }
+
+  func testContextLengthIsReadRegardlessOfArchitecturePrefix() {
+    for arch in ["llama", "qwen2", "gemma3", "some.future.arch"] {
+      let body = Data("{\"model_info\":{\"\(arch).context_length\":4096}}".utf8)
+      XCTAssertEqual(
+        OllamaProvider.parseContextLength(from: body), 4096,
+        "the key is architecture-prefixed; matching by suffix must not go stale")
+    }
+  }
+
+  func testMissingOrUnusableContextLengthIsNil() {
+    XCTAssertNil(OllamaProvider.parseContextLength(from: Data("{}".utf8)))
+    XCTAssertNil(OllamaProvider.parseContextLength(from: Data("not json".utf8)))
+    XCTAssertNil(
+      OllamaProvider.parseContextLength(from: Data(#"{"model_info":{"llama.embedding":1}}"#.utf8)))
+    XCTAssertNil(
+      OllamaProvider.parseContextLength(
+        from: Data(#"{"model_info":{"llama.context_length":0}}"#.utf8)))
+  }
+
+  func testTruncationIsDetectedAtTheGrantedWindowNotTheRequestedOne() {
+    // The hole this closes: Ollama clamps num_ctx down to the model's own
+    // maximum, so a model built at 4096 runs at 4096 however much we ask for.
+    // Comparing against the requested 16384 would leave the check dead for
+    // exactly the models that truncate.
+    let json: [String: Any] = [
+      "message": ["role": "assistant", "content": "a partial rewrite"],
+      "done": true,
+      "prompt_eval_count": 4096,
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: json) else {
+      return XCTFail("bad fixture")
+    }
+
+    // Against the requested window this looks fine — and that was the bug.
+    XCTAssertEqual(
+      try? OllamaProvider.parseResponseText(
+        from: data, windowTokens: OllamaProvider.contextWindowTokens),
+      "a partial rewrite")
+
+    // Against the budget the service actually granted, it is a truncation.
+    XCTAssertThrowsError(
+      try OllamaProvider.parseResponseText(from: data, windowTokens: 1024)
+    ) { error in
+      guard case ProviderError.inputTooLargeForContext = error else {
+        return XCTFail("expected inputTooLargeForContext, got \(error)")
+      }
+    }
   }
 
   // MARK: - stripLeadingReasoningBlock (FR-009 layer 2)
@@ -318,7 +487,10 @@ final class OllamaProviderTests: XCTestCase {
     guard let data = try? JSONSerialization.data(withJSONObject: json) else {
       return XCTFail("bad fixture")
     }
-    XCTAssertThrowsError(try OllamaProvider.parseResponseText(from: data)) { error in
+    XCTAssertThrowsError(
+      try OllamaProvider.parseResponseText(
+        from: data, windowTokens: OllamaProvider.contextWindowTokens - 1)
+    ) { error in
       guard case ProviderError.inputTooLargeForContext = error else {
         return XCTFail("expected inputTooLargeForContext, got \(error)")
       }

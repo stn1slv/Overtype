@@ -49,7 +49,7 @@ Exception IV-b in `plan.md`.
 |---|---|---|---|---|
 | `serviceUnreachable(address: String)` | endpoint host from config | names the address and says the service does not appear to be running | `"service unreachable"` | `false` |
 | `modelNotAvailable(model: String)` | resolved model name from the request | names the model and says it is not installed locally | `"model not available"` | `false` |
-| `inputTooLargeForContext(limit: Int)` | `maxSafeInputCharacters` | states the character limit (including the action's prompt) and tells the user to select less text | `"input too large for context"` | `false` |
+| `inputTooLargeForContext(limit: Int)` | `maxSafePromptTokens` | states the limit (a token estimate, ~characters for Latin/CJK; the action's prompt counts too) and tells the user to select less text | `"input too large for context"` | `false` |
 
 Every payload originates in the user's own configuration or in a compile-time
 constant, never in server-authored text or the selection, so `errorDescription`
@@ -76,7 +76,11 @@ without a network.
 |---|---|---|---|
 | `defaultBaseURLString` | `static let String` | `"http://localhost:11434"` | via `endpointURL` |
 | `contextWindowTokens` | `static let Int` | `16384` (R3) | via `requestBody` |
-| `maxSafeInputCharacters` | `static let Int` | `6000` — the pre-send bound for FR-010b (R3) | via `checkInputSize` |
+| `maxSafePromptTokens` | `static let Int` | `6000` — the pre-send bound in estimated tokens, FR-010b (R3, R13) | via `checkInputSize` |
+| `estimatedTokens(_:)` | `static func` | `utf8.count` — the true token upper bound; measured, see R13 | yes |
+| `promptBudget(grantedWindow:)` | `static func` | `min(maxSafePromptTokens, granted / 2)` — the server keeps half the window (R13) | yes |
+| `parseContextLength(from:)` | `static func` | reads `model_info.<arch>.context_length` from `/api/show` (R13) | yes |
+| `showEndpointURL(base:)` | `static func` | `{base}/api/show` | yes |
 | `checkInputSize(systemPrompt:userPrompt:)` | `static func` | throws `inputTooLargeForContext(limit:)` when the composed prompt exceeds the bound | yes |
 | `endpointURL(base:)` | `static func` | `{base}/api/chat`, slash-normalised | yes |
 | `requestBody(model:systemPrompt:userPrompt:temperature:)` | `static func` | Body per contract; asserts `stream: false`, `num_ctx`, role split | yes |

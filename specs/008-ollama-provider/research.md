@@ -75,9 +75,10 @@ only part of the selection while `TextWriter` replaces all of it. That is silent
 destruction of the user's text, which Principle II exists to prevent.
 
 **Companion decision (FR-010b)**: a second constant,
-`maxSafeInputCharacters = 6000`, bounds the selection the provider will send.
+`maxSafePromptTokens = 6000`, bounds the composed prompt the provider will send.
 `transform(_:)` throws `inputTooLargeForContext(limit:)` before building a
-request when `request.text.count` exceeds it. This is a fixed constant checked
+request when the estimated tokens of the composed prompt (system prompt plus the
+rendered user prompt) exceed it. This is a fixed constant checked
 once per run, **not** the per-request characters-to-tokens sizing that
 clarification 6 rejected: nothing about the request varies the value, and the
 failure mode of a bad estimate is a visible refusal instead of silent text loss.
@@ -121,6 +122,65 @@ what the spec's edge-case section calls for. Changing that to a typed error
 would diverge from them and belongs in a spec revision.
 
 **Inline comment required**: yes.
+
+## R13. Token estimation and the prompt budget (added 2026-08-06, review round 4)
+
+**Decision**: estimate tokens as the **UTF-8 byte count**, and cap the prompt at
+`min(6000, grantedWindow / 2)` where `grantedWindow` is read once per model from
+`POST /api/show` and cached.
+
+Both halves of this were arrived at by measurement, after a review round pointed
+at the area and a first attempt at fixing it was falsified by running it.
+
+**Measurement 1 — the tokenizer falls back to bytes.** Against Ollama 0.32.5 with
+`tinyllama`, 100 randomly chosen CJK characters (300 UTF-8 bytes) were reported
+as **328 evaluated tokens** — about one token per byte, not the ~1 per character
+a "CJK is one token per character" rule of thumb predicts. An estimate of
+`max(count, utf8.count / 3)` would have called that 100, understating the real
+cost by more than 3x, in the direction that silently loses text. `utf8.count` is
+the honest upper bound: a byte-level BPE token covers at least one byte.
+
+*Consequence, accepted deliberately*: the budget is effectively in bytes, so it
+allows roughly 6000 Latin characters but only ~2000 CJK ones. That asymmetry is
+not an artefact of the estimate — those characters really do cost that much — and
+the README states it.
+
+**Measurement 2 — truncation happens at half the window, not at the window.**
+Same setup, `tinyllama`, whose `/api/show` reports `llama.context_length: 2048`.
+Prompts of increasing size, with `num_ctx: 16384` requested:
+
+| Input characters | `prompt_eval_count` |
+|---|---|
+| 100 | 328 |
+| 400 | 1194 |
+| 800 | 1026 |
+| 1200 | 1026 |
+| 2000 | 1026 |
+| 4000 | 1026 |
+
+A prompt under the window is evaluated whole (400 → 1194). Above it, the server
+keeps ~1026 tokens — half of 2048 — and answers from that, with no error. So the
+usable prompt budget is **half** the granted window, the other half being what the
+answer is generated into.
+
+This falsified the first attempt at the fix, which compared `prompt_eval_count`
+against the *full* granted window: with a real truncation reporting 1026 against
+a window of 2048, the check did not fire, and a live test caught it. The budget
+is now half the window, checked **before** sending, so an oversized prompt is
+refused rather than detected after the fact. The post-hoc `prompt_eval_count`
+check remains as a backstop against the same budget.
+
+**Why `/api/show` at all**: Ollama clamps `num_ctx` down to a model's own
+maximum, so the requested 16384 is not what a 2048-model runs at. The lookup
+carries only the model name, goes to the same endpoint as the transformation (so
+no new host, FR-018), is cached per model, and is non-fatal — a failure falls
+back to the fixed 6000 constant.
+
+**Alternatives considered**: comparing `prompt_eval_count` against our own
+estimate — rejected, the estimate is deliberately pessimistic for ASCII (~4x), so
+an untruncated English run would look truncated. Keeping a character-based bound
+and documenting the CJK gap — rejected, it leaves a reachable path to silent text
+loss.
 
 ## R4. Temperature
 
@@ -175,8 +235,8 @@ content when it is delimited by `<think>…</think>` or `<thinking>…</thinking
 - `serviceUnreachable(address: String)` — the local service did not answer.
 - `modelNotAvailable(model: String)` — the service answered, the model is not
   installed.
-- `inputTooLargeForContext(limit: Int)` — the selection exceeds
-  `maxSafeInputCharacters` (FR-010b, added 2026-08-06); thrown before any
+- `inputTooLargeForContext(limit: Int)` — the composed prompt exceeds
+  `maxSafePromptTokens` (FR-010b, added 2026-08-06); thrown before any
   request is built.
 
 All three are classified **non-retryable** in `isRetryable`, all three get an
