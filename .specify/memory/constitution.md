@@ -208,7 +208,10 @@ has already been wrong.
   manually verifiable. A milestone is not complete until it has been exercised
   by hand against a real target application.
 - Pull request checklist, all items mandatory:
-  1. `rg NSPasteboard Sources/` returns no match outside comments.
+  1. `rg NSPasteboard Sources/ Vendor/` returns no match outside comments.
+     `Vendor/` is included because vendored dependency source is compiled into
+     the shipped binary and is therefore production code, even though it is not
+     authored here.
   2. No secret, selected text or model output appears in any log statement at
      `info` level or above.
   3. Every new system-boundary workaround carries an explanatory comment.

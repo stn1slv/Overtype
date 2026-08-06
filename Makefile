@@ -38,8 +38,9 @@ clean:
 	rm -rf .build Overtype.app
 
 ## upgrade-deps: Update Swift package dependencies to the latest allowed versions.
-## Note: KeyboardShortcuts is pinned with `exact:` in Package.swift, so moving it
-## to a newer major/minor requires editing that pin by hand.
+## Note: KeyboardShortcuts is vendored under Vendor/KeyboardShortcuts and consumed
+## with `.package(path:)`, so `swift package update` cannot move it. Upgrading it
+## means re-vendoring and re-applying the local patch; see VENDORING.md there.
 upgrade-deps:
 	swift package update
 
