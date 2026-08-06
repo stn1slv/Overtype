@@ -12,6 +12,7 @@ public struct ProvidersTab: View {
   @State private var baseURLString = ""
   @State private var defaultModel = ""
   @State private var timeout = 30.0
+  @State private var retryDelay = ProviderConfig.defaultRetryDelaySeconds
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
 
@@ -123,6 +124,16 @@ public struct ProvidersTab: View {
               Text("\(Int(timeout))s")
             }
 
+            HStack {
+              Text("Retry delay")
+              Slider(value: $retryDelay, in: 0...5, step: 0.5)
+              Text(String(format: "%.1fs", retryDelay))
+            }
+            .help(
+              "Pause before the single automatic retry of a failed request. "
+                + "Only transient failures (network errors, timeouts, rate limits, "
+                + "server errors) are retried. Set to 0 to retry immediately.")
+
             SecureField(
               editingProvider == nil ? "API Key" : "API Key (Leave empty to keep current)",
               text: $apiKey)
@@ -159,6 +170,7 @@ public struct ProvidersTab: View {
     baseURLString = ""
     defaultModel = ""
     timeout = 30.0
+    retryDelay = ProviderConfig.defaultRetryDelaySeconds
     apiKey = ""
     errorMessage = nil
     isShowingEditSheet = true
@@ -171,6 +183,10 @@ public struct ProvidersTab: View {
     baseURLString = provider.baseURL?.absoluteString ?? ""
     defaultModel = provider.defaultModel
     timeout = provider.timeoutSeconds
+    // Loaded unclamped, matching `timeout` above. Clamping here would rewrite a
+    // hand-edited out-of-range value to the slider's ceiling on the next save,
+    // silently discarding a setting the user chose on purpose.
+    retryDelay = provider.retryDelaySeconds
     apiKey = ""
     errorMessage = nil
     isShowingEditSheet = true
@@ -185,6 +201,7 @@ public struct ProvidersTab: View {
         baseURLString: baseURLString,
         defaultModel: defaultModel,
         timeout: timeout,
+        retryDelay: retryDelay,
         apiKey: apiKey
       )
       isShowingEditSheet = false

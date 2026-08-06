@@ -27,10 +27,13 @@ public class ActionEngine {
 
     let config = ConfigStore.shared.config
 
+    let providerConfig = config.providers.first(where: { $0.id == action.providerID })
+
     // Find default model if not overridden
-    let defaultModel =
-      config.providers.first(where: { $0.id == action.providerID })?.defaultModel ?? "unknown"
+    let defaultModel = providerConfig?.defaultModel ?? "unknown"
     let model = action.model ?? defaultModel
+    let retryDelaySeconds =
+      providerConfig?.retryDelaySeconds ?? ProviderConfig.defaultRetryDelaySeconds
 
     // Progress states honor the Show HUD preference; errors are always shown
     // regardless (Principle VI: no silent failure).
@@ -71,7 +74,9 @@ public class ActionEngine {
           temperature: action.temperature
         )
 
-        let rawResponse = try await provider.transform(request)
+        let rawResponse = try await Self.transformWithRetry(
+          provider: provider, request: request, retryDelaySeconds: retryDelaySeconds,
+          showProgress: showProgress)
 
         try Task.checkCancellation()
 
@@ -152,10 +157,93 @@ public class ActionEngine {
         FeedbackPresenter.shared.showError(message: "API Error \(statusCode): \(message)")
         Logger.shared.log("Action failed: API error \(statusCode).", level: .error)
         Logger.shared.sanitizedLog(sensitiveText: message, context: "API error body", level: .debug)
+      } catch let error as ProviderError {
+        // Log the redaction-safe label, never the error itself: cases such as
+        // .responseBlocked(reason:) interpolate their associated value, and an
+        // error payload can echo fragments of the submitted text. The HUD may
+        // still show the full description; only info+ logs are constrained.
+        FeedbackPresenter.shared.showError(message: error.localizedDescription)
+        Logger.shared.log("Action failed: \(error.logLabel).", level: .error)
       } catch {
         FeedbackPresenter.shared.showError(message: error.localizedDescription)
         Logger.shared.log("Action failed: \(error)", level: .error)
       }
+    }
+  }
+
+  /// Upper bound for the retry pause. The Providers tab slider already caps at
+  /// 5s; this exists for hand-edited configs, where a longer wait is
+  /// indistinguishable from the app having hung.
+  static let maxRetryDelaySeconds: Double = 60
+
+  /// Converts a configured retry delay into nanoseconds for `Task.sleep`.
+  ///
+  /// Clamped at both ends because `config.json` is a documented hand-editing
+  /// surface and both extremes trap in the `UInt64(...)` conversion below: a
+  /// negative or non-finite value has no `UInt64` representation, and a large
+  /// one (`1e11`, say) overflows with "Double value cannot be converted to
+  /// UInt64". Returns 0 to mean "retry immediately, no sleep". Pure logic,
+  /// unit-tested, and deliberately free of logging so it stays pure; callers
+  /// report a clamp via `isRetryDelayInRange`.
+  static func retryDelayNanoseconds(forSeconds seconds: Double) -> UInt64 {
+    // NaN fails both comparisons, so it also lands on 0.
+    guard seconds.isFinite, seconds > 0 else { return 0 }
+    return UInt64(min(seconds, maxRetryDelaySeconds) * 1_000_000_000)
+  }
+
+  /// Whether a configured delay is used as written rather than clamped. Lets the
+  /// caller warn instead of silently substituting a different value, the same
+  /// reason the Providers tab loads `retryDelaySeconds` unclamped.
+  static func isRetryDelayInRange(_ seconds: Double) -> Bool {
+    seconds.isFinite && (0...maxRetryDelaySeconds).contains(seconds)
+  }
+
+  /// Runs the provider call, retrying once if the failure was transient.
+  ///
+  /// Only `ProviderError.isRetryable` failures are retried; everything else,
+  /// including cancellation, propagates from the first attempt so the user sees
+  /// the real error without waiting through a second doomed request. A failed
+  /// call has changed nothing in the document (the write happens later, after
+  /// the context re-check), so repeating it is safe under Principle II.
+  ///
+  /// `static` and `internal` on purpose: it touches no instance state, so tests
+  /// can drive it with a fake `AIProvider` without standing up an engine or
+  /// reaching through `ProviderRegistry.shared`.
+  static func transformWithRetry(
+    provider: AIProvider,
+    request: TransformRequest,
+    retryDelaySeconds: Double,
+    showProgress: (String) -> Void
+  ) async throws -> String {
+    do {
+      return try await provider.transform(request)
+    } catch let error as ProviderError where error.isRetryable {
+      // Escape pressed during the failed attempt must abort here rather than
+      // start a second request.
+      try Task.checkCancellation()
+
+      Logger.shared.log(
+        "Provider call failed (\(error.logLabel)); retrying once.", level: .warning)
+      showProgress("Retrying...")
+
+      // Brief pause so a rate limit has a chance to clear before the second
+      // attempt. Task.sleep is cancellable, so Escape during the wait still
+      // aborts the run with nothing written.
+      //
+      // A hand-edited value outside the supported range is clamped rather than
+      // honored, so say so (Principle IV): otherwise a configured 120s behaves
+      // as 60s with nothing to explain the difference.
+      if !Self.isRetryDelayInRange(retryDelaySeconds) {
+        Logger.shared.log(
+          "Configured retryDelaySeconds (\(retryDelaySeconds)) is outside "
+            + "0...\(Self.maxRetryDelaySeconds)s; clamping.", level: .warning)
+      }
+      let delayNanoseconds = Self.retryDelayNanoseconds(forSeconds: retryDelaySeconds)
+      if delayNanoseconds > 0 {
+        try await Task.sleep(nanoseconds: delayNanoseconds)
+      }
+
+      return try await provider.transform(request)
     }
   }
 

@@ -47,14 +47,28 @@ The core pipeline lives in `Core/ActionEngine.swift` (`run(action:)`). One run
 is a strict sequence, each stage gated on the previous succeeding:
 
 1. `SelectionReader` reads the selected text via the Accessibility API, capturing the source `pid` and focused `AXUIElement`. It delegates to `Support/AXHelpers.swift`, whose `getFocusedElement()` tries five strategies, ending in a depth-first accessibility-tree crawl to find the active text element in Electron, New Outlook, and React Native apps that do not propagate `kAXFocusedUIElementAttribute` (an inline QUIRK WORKAROUND comment marks it). If all five fail *and* the caller passed `wakeDormantTree: true` (only `SelectionReader` does), a sixth escalation runs: `wakeDormantAccessibilityTree` sets `AXEnhancedUserInterface` and `AXManualAccessibility` on the app element, discarding both return codes, then `retryFocusLookup` applies a 2 s AX messaging timeout and retries app-element-first for 24 attempts at 150 ms, checking `Task.checkCancellation()` each pass. `ActionEngine`'s pre-write re-check (step 4) deliberately keeps the single-shot call, so a genuine context change still aborts fast. [Source: specs/005-teams-ax-recovery]
-2. The matching provider (from `ProviderRegistry`) performs the AI call. `Providers/OpenAICompatibleProvider.swift` uses `URLSession` async/await; providers conform to the `AIProvider` protocol.
+2. The matching provider (from `ProviderRegistry`) performs the AI call. `Providers/OpenAICompatibleProvider.swift` uses `URLSession` async/await; providers conform to the `AIProvider` protocol. `ActionEngine.transformWithRetry` wraps this in exactly one automatic retry, gated on `ProviderError.isRetryable`: HTTP 408/429 and 5xx except 501, timeouts, the transient `URLError` codes in `ProviderError.retryableURLErrorCodes`, and any `.networkError` whose payload is *not* a `URLError` (unclassifiable, so it gets the one retry). Configuration errors, other 4xx codes, safety blocks, empty/invalid responses, and cancellation are never retried, since a second identical request fails the same way and only delays the error. Note that `mapTransportError` funnels every non-timeout, *non-cancelled* `URLError` into `.networkError`, including deterministic ones (`.cannotFindHost` from a typo'd `baseURL`, `.secureConnectionFailed` from a TLS misconfiguration), so `isRetryable` matches on the code rather than the case; `.cannotFindHost` is excluded deliberately and the tradeoff is written out at the declaration. The retry shows `Retrying...` in the HUD (when `showHUD` is on; like the other progress states it is a no-op otherwise) and pauses for the provider's `retryDelaySeconds` first, clamped to `0...ActionEngine.maxRetryDelaySeconds` (60s) with a warning log when the clamp engages. The pause uses cancellable `Task.sleep`, so Escape still aborts. Retrying is safe under Principle II because the write happens later, after the context re-check, so a failed call has changed nothing. Never log the error itself at `info`+: use `ProviderError.logLabel`, since `errorDescription` embeds the server message, which can echo fragments of the submitted text.
 3. `Core/ResponseSanitizer.swift` cleans the model output (pure logic, unit-tested).
 4. **Context re-check before writing**: the engine verifies the frontmost `pid` still matches and the focused element is still `CFEqual` to the one read. If either changed, the write is aborted and nothing is modified.
 5. `Core/TextWriter.swift` writes the replacement using synthetic keyboard events / the Accessibility API, honoring the action's `writeStrategy` and global typing settings.
 
-`UI/FeedbackPresenter.swift` shows the HUD states (Reading / Thinking / Writing /
-error). UI must never take keyboard focus, since that would destroy the target
-app's selection.
+`UI/FeedbackPresenter.swift` shows the HUD states (Reading / Thinking / Retrying /
+Writing / error). UI must never take keyboard focus, since that would destroy the
+target app's selection. Three properties of its `HUDPanel` are load-bearing and
+must survive any restyling:
+
+- `.nonactivatingPanel` in the style mask, plus the `canBecomeKey`/`canBecomeMain`
+  overrides returning `false`. These are what keep the panel from activating
+  Overtype and destroying the selection.
+- `isOpaque = false` with `backgroundColor = .clear`, and `.borderless` rather
+  than `.hudWindow`/`.utilityWindow`. The rounded shape is drawn solely by
+  `HUDAppKitView`'s layer `cornerRadius`; any opaque window background fills the
+  corner cut-outs and they render as solid black. Because `.borderless` also
+  drops the dark control styling `.hudWindow` forced on the spinner, the panel
+  pins `NSAppearance(named: .darkAqua)` explicitly.
+- `level = .statusBar`, `collectionBehavior` of `[.canJoinAllSpaces,
+  .fullScreenAuxiliary]`, and `hidesOnDeactivate = false`, so a run over a
+  fullscreen target still shows feedback.
 
 `Support/Logger.swift` (`Logger.shared`) wraps `os_log` with an `isDebugEnabled`
 gate and `sanitizedLog()`, which redacts selected text and model output unless
@@ -65,8 +79,11 @@ per-app typing overrides) and ends with a read-only `Version` row showing
 `Support/AppVersion.swift`'s formatted bundle version, e.g. `1.2.1 (20)`, or
 `Unknown` when the metadata is unreadable; it is selectable but deliberately
 outside `SettingsViewModel` so it never joins draft state or the save action.
-The Providers tab adds/edits/deletes providers and
-stores their API keys in the Keychain; the Actions tab adds/edits/deletes actions
+The Providers tab adds/edits/deletes providers,
+stores their API keys in the Keychain, and exposes `timeoutSeconds` and
+`retryDelaySeconds` as sliders. Both load unclamped from config, since clamping
+to the slider range would silently rewrite a deliberate hand-edited value on the
+next save; the Actions tab adds/edits/deletes actions
 and records global hotkeys via an interactive recorder with conflict detection.
 A `SettingsViewModel` handles draft state, slug-based id generation, and atomic
 saves through `ConfigStore`.
@@ -74,7 +91,7 @@ saves through `ConfigStore`.
 ### Configuration and extension model
 
 - `Config/AppConfig.swift` defines the `Codable` config model; `Config/ConfigStore.swift` loads/persists `~/Library/Application Support/Overtype/config.json`; `Config/DefaultConfig.swift` holds the effective default as an inline JSON string and seeds it on first launch. Note: `Support/Overtype/config.json` is a stale sample, not the packaged default. It is not declared as a package resource in `Package.swift`, is never loaded, and no longer matches the model (it uses `type` instead of `kind` and omits required fields, so it would fail to decode). Treat `DefaultConfig.swift` as the source of truth.
-- Config has three parts: `global` (typing speed/HUD), `providers` (id, kind, baseURL, defaultModel, keychainKey), and `actions` (title, shortcut, providerID, optional model, systemPrompt, userPromptTemplate, temperature, limits, writeStrategy).
+- Config has three parts: `global` (typing speed/HUD), `providers` (id, kind, baseURL, defaultModel, timeoutSeconds, retryDelaySeconds, keychainKey), and `actions` (title, shortcut, providerID, optional model, systemPrompt, userPromptTemplate, temperature, limits, writeStrategy).
 - Model resolution order: action-level `model`, then provider `defaultModel`.
 - **Adding an automation requires no Swift code**: it is a declarative action record in config. Actions can be added either by editing `config.json` directly or through the in-app Actions editor in Settings (implemented in specs/003-gui-settings).
 - **Adding an AI provider** requires exactly three edits: a new case in the provider-kind enum, a new type conforming to `AIProvider`, and one line in `Providers/ProviderRegistry.swift`. `openai` (`OpenAICompatibleProvider`) and `gemini` (`GeminiProvider`, native `generateContent` API) are implemented; `anthropic` and `ollama` are enum cases with stubbed (not yet implemented) branches there. `GeminiProvider` reads its key from the Keychain and sends it in the `x-goog-api-key` header (never in the URL), and maps Gemini safety-blocks/empty candidates to the typed errors `ProviderError.responseBlocked(reason:)` / `.emptyResponse`. [Source: specs/004-gemini-provider]
@@ -93,8 +110,9 @@ Read that file before any non-trivial change.
 
 ## Testing discipline
 
-- Pure logic (response sanitization, prompt templating, config decode/migration, shortcut encoding) is unit-tested under `Tests/OvertypeTests/`.
+- Pure logic (response sanitization, prompt templating, config decode/migration, shortcut encoding, retry classification and delay clamping) is unit-tested under `Tests/OvertypeTests/`.
 - System-boundary code (Accessibility, synthetic events, hotkeys, Keychain) is **not** unit-tested with mocks. It is verified by a manual acceptance procedure run against real apps and recorded in `docs/compatibility.md` before each release.
+- `ActionEngine.transformWithRetry` is deliberately `static` and `internal`, not `private`: it touches no instance state, so `TransformRetryTests` drives it with a fake `AIProvider` and asserts the retry behavior itself (exactly one retry, no retry on a non-retryable error, no second request after cancellation). Keep that seam. `run(action:)` around it resolves its provider through `ProviderRegistry.shared` and so stays untestable; do not confuse the two.
 
 ## Workflow
 

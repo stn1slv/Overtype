@@ -80,23 +80,35 @@ public enum ProviderKind: String, Codable, Equatable {
 }
 
 public struct ProviderConfig: Codable, Equatable {
+  /// Single source for the retry-pause default, shared by the memberwise init,
+  /// the tolerant decoder, the Providers tab form, and `ActionEngine`'s
+  /// fallback, so the four cannot drift apart.
+  public static let defaultRetryDelaySeconds: Double = 0.5
+
   public var id: String
   public var kind: ProviderKind
   public var baseURL: URL?
   public var defaultModel: String
   public var timeoutSeconds: Double
+  /// Pause before the single automatic retry of a transient provider failure
+  /// (see `ProviderError.isRetryable`). Gives a rate limit a chance to clear
+  /// before the second attempt. `0` retries immediately.
+  public var retryDelaySeconds: Double
   // keychainKey references a generic password in the macOS Keychain
   public var keychainKey: String?
 
   public init(
     id: String, kind: ProviderKind, baseURL: URL? = nil, defaultModel: String,
-    timeoutSeconds: Double = 30.0, keychainKey: String? = nil
+    timeoutSeconds: Double = 30.0,
+    retryDelaySeconds: Double = ProviderConfig.defaultRetryDelaySeconds,
+    keychainKey: String? = nil
   ) {
     self.id = id
     self.kind = kind
     self.baseURL = baseURL
     self.defaultModel = defaultModel
     self.timeoutSeconds = timeoutSeconds
+    self.retryDelaySeconds = retryDelaySeconds
     self.keychainKey = keychainKey
   }
 
@@ -109,6 +121,11 @@ public struct ProviderConfig: Codable, Equatable {
     baseURL = try container.decodeIfPresent(URL.self, forKey: .baseURL)
     defaultModel = try container.decode(String.self, forKey: .defaultModel)
     timeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .timeoutSeconds) ?? 30.0
+    // Absent in configs written before the retry feature; those keep the 0.5s
+    // default rather than failing to decode.
+    retryDelaySeconds =
+      try container.decodeIfPresent(Double.self, forKey: .retryDelaySeconds)
+      ?? ProviderConfig.defaultRetryDelaySeconds
     keychainKey = try container.decodeIfPresent(String.self, forKey: .keychainKey)
   }
 }

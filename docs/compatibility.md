@@ -68,6 +68,52 @@ Verified 2026-08-04 against the ad-hoc local build at commit count 20:
 Rows 5 through 9 require a launched application and a human observer. Execute them
 and replace the `pending` entries before the next release.
 
+## HUD Transparency Acceptance
+
+`HUDPanel` moved from a `.hudWindow`/`.utilityWindow` style mask to
+`[.borderless, .nonactivatingPanel]` with `isOpaque = false`,
+`backgroundColor = .clear`, and a pinned `.darkAqua` appearance, so the rounded
+corners drawn by `HUDAppKitView`'s layer stop rendering as solid black. Window
+presentation is system-boundary work: the properties that matter (focus,
+Spaces, fullscreen) cannot be asserted from a unit test.
+
+Verified 2026-08-06 against the ad-hoc local build:
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| H1 | Corners over a real target | Four corners show the app behind, not black | 2026-08-06 pass (reported by the author against a live run) |
+| H2 | Focus is never taken | Target app keeps its selection; the replacement is written normally | 2026-08-06 pass (implied by H1: the run completed and wrote its replacement) |
+| H3 | Shadow follows the rounded outline | No square shadow around the 300x60 rect; no stale shadow on repeated shows | pending (manual; `hasShadow` confirmed to stay `true` on a borderless panel by direct instantiation, but the drawn result was not inspected) |
+| H4 | Over a fullscreen target | HUD still visible; `.canJoinAllSpaces` / `.fullScreenAuxiliary` unaffected by the style-mask change | pending (manual) |
+| H5 | On a secondary Space | HUD appears on the active Space | pending (manual) |
+| H6 | Light background | Text and spinner legible; spinner still light-colored after `.hudWindow` was dropped | pending (manual) |
+
+H3 through H6 need a human observer. Execute them and replace the `pending`
+entries before the next release. H2 is recorded as an inference, not a direct
+observation: the focus-critical properties (`.nonactivatingPanel`,
+`canBecomeKey`/`canBecomeMain`) are unchanged by this branch.
+
+## Retry Acceptance
+
+`ActionEngine.transformWithRetry` retries a failed provider call once when
+`ProviderError.isRetryable` says the failure was transient. Classification, the
+delay clamp, and the retry sequencing are pure logic and are covered by
+`ProviderErrorRetryTests`, `RetryDelayClampTests`, and `TransformRetryTests`
+(`swift test --filter TransformRetryTests`), including cancellation during the
+pause. What those cannot cover is a real provider failing for real.
+
+**Status: PENDING** — the retry has not been observed against a live provider.
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| R1 | Live 429 or 5xx | HUD shows `Retrying...`; the second attempt succeeds or a specific error follows | pending |
+| R2 | Network dropped mid-run | Retry fires, then a specific network error; selection unchanged | pending |
+| R3 | Wrong API key | Error appears immediately, with no retry and no extra delay | pending |
+| R4 | Typo'd `baseURL` | Error appears immediately (`.cannotFindHost` is deliberately not retried) | pending |
+| R5 | Escape during the retry pause | Run cancels within the pause; selection unchanged; no second request | pending |
+| R6 | `showHUD` off | Retry still happens silently; only the final error is shown | pending |
+| R7 | Out-of-range `retryDelaySeconds` | A hand-edited `120` logs a clamp warning and waits 60s, not 120s | pending |
+
 ## Provider Acceptance
 
 System-boundary provider behavior (a live network call) is verified by a manual

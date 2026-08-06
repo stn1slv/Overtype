@@ -122,7 +122,7 @@ public final class SettingsViewModel: ObservableObject {
 
   public func saveProvider(
     id: String?, name: String, kind: ProviderKind, baseURLString: String, defaultModel: String,
-    timeout: Double, apiKey: String
+    timeout: Double, retryDelay: Double, apiKey: String
   ) throws {
     // Validation
     let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -163,6 +163,7 @@ public final class SettingsViewModel: ObservableObject {
         provider.baseURL = url
         provider.defaultModel = trimmedModel
         provider.timeoutSeconds = timeout
+        provider.retryDelaySeconds = retryDelay
 
         // Save API Key if provided
         if !apiKey.isEmpty {
@@ -197,6 +198,7 @@ public final class SettingsViewModel: ObservableObject {
         baseURL: url,
         defaultModel: trimmedModel,
         timeoutSeconds: timeout,
+        retryDelaySeconds: retryDelay,
         keychainKey: keychainKey
       )
       providers.append(newProvider)

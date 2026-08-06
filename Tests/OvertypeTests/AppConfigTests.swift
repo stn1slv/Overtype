@@ -61,6 +61,30 @@ final class AppConfigTests: XCTestCase {
     XCTAssertNil(provider.keychainKey)
   }
 
+  func testProviderConfigDecodesWithoutRetryDelaySeconds() throws {
+    // Configs written before the retry feature have no such key; they must keep
+    // decoding and fall back to the 0.5s default.
+    let json = #"{"id": "p1", "kind": "openai", "defaultModel": "gpt-4o"}"#
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(provider.retryDelaySeconds, 0.5)
+  }
+
+  func testProviderConfigDecodesExplicitRetryDelaySeconds() throws {
+    let json = #"""
+      {"id": "p1", "kind": "openai", "defaultModel": "gpt-4o", "retryDelaySeconds": 2.5}
+      """#
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(provider.retryDelaySeconds, 2.5)
+  }
+
+  func testProviderConfigDecodesZeroRetryDelayAsZero() throws {
+    // 0 means "retry immediately" and must survive decoding rather than being
+    // treated as a missing value and replaced by the default.
+    let json = #"{"id": "p1", "kind": "openai", "defaultModel": "gpt-4o", "retryDelaySeconds": 0}"#
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(provider.retryDelaySeconds, 0)
+  }
+
   func testActionConfigDecodesWithOnlyRequiredFields() throws {
     let json = #"""
       {
