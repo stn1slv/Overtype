@@ -12,7 +12,7 @@ public struct ProvidersTab: View {
   @State private var baseURLString = ""
   @State private var defaultModel = ""
   @State private var timeout = 30.0
-  @State private var retryDelay = 0.5
+  @State private var retryDelay = ProviderConfig.defaultRetryDelaySeconds
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
 
@@ -170,7 +170,7 @@ public struct ProvidersTab: View {
     baseURLString = ""
     defaultModel = ""
     timeout = 30.0
-    retryDelay = 0.5
+    retryDelay = ProviderConfig.defaultRetryDelaySeconds
     apiKey = ""
     errorMessage = nil
     isShowingEditSheet = true
@@ -183,9 +183,10 @@ public struct ProvidersTab: View {
     baseURLString = provider.baseURL?.absoluteString ?? ""
     defaultModel = provider.defaultModel
     timeout = provider.timeoutSeconds
-    // A hand-edited config can hold a value outside the slider's 0...5 range;
-    // clamp so the slider shows a truthful position instead of pinning silently.
-    retryDelay = min(max(provider.retryDelaySeconds, 0), 5)
+    // Loaded unclamped, matching `timeout` above. Clamping here would rewrite a
+    // hand-edited out-of-range value to the slider's ceiling on the next save,
+    // silently discarding a setting the user chose on purpose.
+    retryDelay = provider.retryDelaySeconds
     apiKey = ""
     errorMessage = nil
     isShowingEditSheet = true

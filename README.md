@@ -59,6 +59,7 @@ You can manage all your preferences, providers, actions, and global hotkeys dire
       "baseURL": "https://api.openai.com/v1",
       "defaultModel": "gpt-5.4-nano",
       "timeoutSeconds": 30.0,
+      "retryDelaySeconds": 0.5,
       "keychainKey": "overtype-openai-key"
     }
   ],
@@ -119,6 +120,7 @@ configuration, no rebuild required.
      "kind": "gemini",
      "defaultModel": "gemini-3.5-flash-lite",
      "timeoutSeconds": 30.0,
+     "retryDelaySeconds": 0.5,
      "keychainKey": "overtype-gemini-key"
    }
    ```

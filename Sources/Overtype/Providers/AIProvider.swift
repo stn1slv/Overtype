@@ -61,6 +61,18 @@ public enum ProviderError: Error, LocalizedError {
     }
   }
 
+  /// URLError codes that describe a transient condition, where the same request
+  /// can plausibly succeed moments later. Everything else (bad URL, unknown
+  /// host, TLS failure, authentication required) describes a setup problem that
+  /// a second identical request cannot fix.
+  static let retryableURLErrorCodes: Set<URLError.Code> = [
+    .networkConnectionLost,
+    .notConnectedToInternet,
+    .dnsLookupFailed,
+    .cannotConnectToHost,
+    .resourceUnavailable,
+  ]
+
   /// Whether a single automatic retry is worth attempting.
   ///
   /// Only transient failures qualify: a dropped connection, a timeout, a rate
@@ -71,8 +83,20 @@ public enum ProviderError: Error, LocalizedError {
   /// user needs to see. Pure logic, unit-tested.
   public var isRetryable: Bool {
     switch self {
-    case .networkError, .timeout:
+    case .timeout:
       return true
+    case .networkError(let underlying):
+      // `mapTransportError` funnels every non-timeout, non-cancelled URLError
+      // into this case, including deterministic ones: a typo in baseURL surfaces
+      // as .cannotFindHost, a TLS misconfiguration as .secureConnectionFailed.
+      // Retrying those costs the user a delay plus a second doomed request, so
+      // match on the code rather than blanket-retrying the case.
+      guard let urlError = underlying as? URLError else {
+        // A non-URLError transport failure cannot be classified, so allow the
+        // single retry rather than turning an unknown blip into a hard error.
+        return true
+      }
+      return Self.retryableURLErrorCodes.contains(urlError.code)
     case .apiError(let statusCode, _):
       // 429 (rate limited) and 5xx (server fault) are the retryable HTTP
       // outcomes. Other 4xx codes describe the request itself, so a repeat of

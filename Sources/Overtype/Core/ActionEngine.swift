@@ -32,7 +32,8 @@ public class ActionEngine {
     // Find default model if not overridden
     let defaultModel = providerConfig?.defaultModel ?? "unknown"
     let model = action.model ?? defaultModel
-    let retryDelaySeconds = providerConfig?.retryDelaySeconds ?? 0.5
+    let retryDelaySeconds =
+      providerConfig?.retryDelaySeconds ?? ProviderConfig.defaultRetryDelaySeconds
 
     // Progress states honor the Show HUD preference; errors are always shown
     // regardless (Principle VI: no silent failure).
@@ -73,7 +74,7 @@ public class ActionEngine {
           temperature: action.temperature
         )
 
-        let rawResponse = try await transformWithRetry(
+        let rawResponse = try await Self.transformWithRetry(
           provider: provider, request: request, retryDelaySeconds: retryDelaySeconds,
           showProgress: showProgress)
 
@@ -188,7 +189,11 @@ public class ActionEngine {
   /// the real error without waiting through a second doomed request. A failed
   /// call has changed nothing in the document (the write happens later, after
   /// the context re-check), so repeating it is safe under Principle II.
-  private func transformWithRetry(
+  ///
+  /// `static` and `internal` on purpose: it touches no instance state, so tests
+  /// can drive it with a fake `AIProvider` without standing up an engine or
+  /// reaching through `ProviderRegistry.shared`.
+  static func transformWithRetry(
     provider: AIProvider,
     request: TransformRequest,
     retryDelaySeconds: Double,

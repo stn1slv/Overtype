@@ -80,6 +80,11 @@ public enum ProviderKind: String, Codable, Equatable {
 }
 
 public struct ProviderConfig: Codable, Equatable {
+  /// Single source for the retry-pause default, shared by the memberwise init,
+  /// the tolerant decoder, the Providers tab form, and `ActionEngine`'s
+  /// fallback, so the four cannot drift apart.
+  public static let defaultRetryDelaySeconds: Double = 0.5
+
   public var id: String
   public var kind: ProviderKind
   public var baseURL: URL?
@@ -94,7 +99,9 @@ public struct ProviderConfig: Codable, Equatable {
 
   public init(
     id: String, kind: ProviderKind, baseURL: URL? = nil, defaultModel: String,
-    timeoutSeconds: Double = 30.0, retryDelaySeconds: Double = 0.5, keychainKey: String? = nil
+    timeoutSeconds: Double = 30.0,
+    retryDelaySeconds: Double = ProviderConfig.defaultRetryDelaySeconds,
+    keychainKey: String? = nil
   ) {
     self.id = id
     self.kind = kind
@@ -117,7 +124,8 @@ public struct ProviderConfig: Codable, Equatable {
     // Absent in configs written before the retry feature; those keep the 0.5s
     // default rather than failing to decode.
     retryDelaySeconds =
-      try container.decodeIfPresent(Double.self, forKey: .retryDelaySeconds) ?? 0.5
+      try container.decodeIfPresent(Double.self, forKey: .retryDelaySeconds)
+      ?? ProviderConfig.defaultRetryDelaySeconds
     keychainKey = try container.decodeIfPresent(String.self, forKey: .keychainKey)
   }
 }

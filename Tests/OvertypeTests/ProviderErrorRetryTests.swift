@@ -8,8 +8,46 @@ final class ProviderErrorRetryTests: XCTestCase {
 
   // MARK: - Transient failures are retried
 
-  func testNetworkErrorIsRetryable() {
-    XCTAssertTrue(ProviderError.networkError(URLError(.notConnectedToInternet)).isRetryable)
+  func testTransientNetworkErrorsAreRetryable() {
+    let transient: [URLError.Code] = [
+      .notConnectedToInternet, .networkConnectionLost, .dnsLookupFailed, .cannotConnectToHost,
+      .resourceUnavailable,
+    ]
+    for code in transient {
+      XCTAssertTrue(
+        ProviderError.networkError(URLError(code)).isRetryable,
+        "expected URLError code \(code.rawValue) to be retryable")
+    }
+  }
+
+  func testDeterministicNetworkErrorsAreNotRetryable() {
+    // mapTransportError funnels every non-timeout URLError into .networkError,
+    // so setup mistakes land here too. Retrying them costs the user a delay plus
+    // a second doomed request before the real error appears.
+    let deterministic: [URLError.Code] = [
+      .badURL, .unsupportedURL, .cannotFindHost, .secureConnectionFailed,
+      .serverCertificateUntrusted, .userAuthenticationRequired,
+      .appTransportSecurityRequiresSecureConnection,
+    ]
+    for code in deterministic {
+      XCTAssertFalse(
+        ProviderError.networkError(URLError(code)).isRetryable,
+        "expected URLError code \(code.rawValue) not to be retryable")
+    }
+  }
+
+  func testUnclassifiableTransportErrorIsRetryable() {
+    // mapTransportError wraps non-URLError failures in .networkError too. With
+    // no code to inspect, allow the single retry rather than turning an unknown
+    // blip into a hard error.
+    struct OpaqueTransportError: Error {}
+    XCTAssertTrue(ProviderError.networkError(OpaqueTransportError()).isRetryable)
+  }
+
+  func testMisconfiguredBaseURLIsNotRetried() {
+    // End-to-end of the classification path a typo in baseURL actually takes.
+    let mapped = ProviderError.mapTransportError(URLError(.cannotFindHost))
+    XCTAssertFalse(mapped.isRetryable)
   }
 
   func testTimeoutIsRetryable() {
