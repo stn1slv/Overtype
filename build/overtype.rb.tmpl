@@ -7,10 +7,33 @@ cask "overtype" do
   desc "AI text transformation utility that types in place via Accessibility API"
   homepage "https://github.com/stn1slv/overtype"
 
+  # Package.swift targets .macOS(.v13) and Info.plist sets
+  # LSMinimumSystemVersion 13.0, so keep this in step with both.
+  depends_on macos: :ventura
+
   app "Overtype.app"
+
+  # Overtype is a menu bar accessory that keeps running, so an upgrade would
+  # otherwise replace the bundle underneath a live process.
+  uninstall quit: "com.github.stn1slv.Overtype"
 
   zap trash: [
     "~/Library/Application Support/Overtype",
     "~/Library/Preferences/com.github.stn1slv.Overtype.plist",
   ]
+
+  caveats <<~EOS
+    Overtype.app is ad-hoc signed and not notarized. On first launch macOS
+    Gatekeeper may block it. If so, remove the quarantine attribute:
+      xattr -dr com.apple.quarantine "#{appdir}/Overtype.app"
+
+    Overtype needs Accessibility permission to read and replace selected text:
+      System Settings > Privacy & Security > Accessibility
+
+    You must re-grant that permission after every upgrade. macOS ties the
+    permission to the app's code signature, and an ad-hoc signature changes
+    with each build, so the old entry stays listed and enabled but no longer
+    works. Select Overtype in that list, remove it with the "-" button, then
+    add the upgraded app and enable it again.
+  EOS
 end
