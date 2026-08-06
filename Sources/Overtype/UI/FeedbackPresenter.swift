@@ -53,7 +53,7 @@ public class FeedbackPresenter: FeedbackPresenting {
     if hudWindowController == nil {
       let panel = HUDPanel(
         contentRect: NSRect(x: 0, y: 0, width: 300, height: 60),
-        styleMask: [.nonactivatingPanel, .hudWindow, .utilityWindow],
+        styleMask: [.borderless, .nonactivatingPanel],
         backing: .buffered,
         defer: false
       )
@@ -67,6 +67,15 @@ public class FeedbackPresenter: FeedbackPresenting {
       panel.level = .statusBar
       panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
       panel.hidesOnDeactivate = false
+
+      // The rounded shape is drawn solely by HUDAppKitView's layer, so the
+      // window itself must be transparent; otherwise the panel's own opaque
+      // background fills the corner cut-outs and they read as solid black.
+      // Dropping .hudWindow from the style mask also drops the dark control
+      // styling it forced on the spinner, so pin the dark appearance here.
+      panel.isOpaque = false
+      panel.backgroundColor = .clear
+      panel.appearance = NSAppearance(named: .darkAqua)
 
       let view = HUDAppKitView(frame: NSRect(x: 0, y: 0, width: 300, height: 60))
       panel.contentView = view
