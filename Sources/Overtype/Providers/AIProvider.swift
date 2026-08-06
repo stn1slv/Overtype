@@ -35,6 +35,19 @@ public enum ProviderError: Error, LocalizedError {
   case contextChanged
   case responseBlocked(reason: String)
   case emptyResponse
+  /// The provider's endpoint did not answer at all. Distinct from
+  /// `.networkError` because a locally hosted backend that is simply not
+  /// running is a setup problem the user fixes on their own machine, not a
+  /// transient network condition (see specs/008-ollama-provider, R6).
+  case serviceUnreachable(address: String)
+  /// The service answered, but the requested model is not installed on it.
+  case modelNotAvailable(model: String)
+  /// The prompt is larger than the model's context window can hold together
+  /// with a full answer. Thrown before the transformation request is built, so
+  /// the selection is never sent (specs/008-ollama-provider FR-010b). The
+  /// provider may already have asked the service about the model's window,
+  /// which carries no user text.
+  case inputTooLargeForContext(limit: Int)
 
   public var errorDescription: String? {
     switch self {
@@ -58,6 +71,27 @@ public enum ProviderError: Error, LocalizedError {
       return "The AI provider blocked the response (reason: \(reason)). Nothing was changed."
     case .emptyResponse:
       return "The AI provider returned no text to write. Nothing was changed."
+    case .serviceUnreachable(let address):
+      return
+        "Could not reach the AI service at \(address). If it runs on this Mac, "
+        + "check that it is started. Nothing was changed."
+    case .modelNotAvailable(let model):
+      return
+        "The model \"\(model)\" is not installed on the AI service. Install it, "
+        + "or choose a model that is. Nothing was changed."
+    case .inputTooLargeForContext(let limit):
+      // The unit is UTF-8 bytes, not characters, and saying "characters" would
+      // mislead exactly the users the difference bites: a CJK selection costs
+      // about three per character, so someone told "limit 1024 characters"
+      // would keep failing at ~340 and have no idea why.
+      //
+      // Only "select less text" is actionable. Lowering the action's Max
+      // Characters cannot make this run succeed — it makes the same selection
+      // fail earlier, with a different message.
+      return
+        "The selection is too large for this provider (limit \(limit) bytes, "
+        + "including the action's prompt; non-Latin text costs more than one "
+        + "byte per character). Select less text and try again. Nothing was changed."
     }
   }
 
@@ -115,6 +149,16 @@ public enum ProviderError: Error, LocalizedError {
     case .apiKeyMissing, .invalidURL, .invalidResponse, .cancelled, .contextChanged,
       .responseBlocked, .emptyResponse:
       return false
+    case .serviceUnreachable, .modelNotAvailable, .inputTooLargeForContext:
+      // All three are permanent by construction. A service that is not running
+      // will not have started within the retry pause, a model that is not
+      // installed will not appear on a second identical request, and an
+      // oversized selection is oversized twice. Note this is deliberately
+      // stricter than `retryableURLErrorCodes`, which still treats
+      // `.cannotConnectToHost` as transient: that entry is correct for a cloud
+      // host and is left untouched, while the Ollama provider maps the same
+      // condition onto `.serviceUnreachable` before it gets there.
+      return false
     }
   }
 
@@ -143,6 +187,15 @@ public enum ProviderError: Error, LocalizedError {
       return "response blocked"
     case .emptyResponse:
       return "empty response"
+    // Payload-free on purpose: the address, the model name, and the limit are
+    // all safe to show the user, but a log label carries no payload at all so
+    // this convention cannot drift into leaking one later.
+    case .serviceUnreachable:
+      return "service unreachable"
+    case .modelNotAvailable:
+      return "model not available"
+    case .inputTooLargeForContext:
+      return "input too large for context"
     }
   }
 

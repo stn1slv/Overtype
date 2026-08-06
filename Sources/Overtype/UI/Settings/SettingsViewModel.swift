@@ -165,6 +165,25 @@ public final class SettingsViewModel: ObservableObject {
         provider.timeoutSeconds = timeout
         provider.retryDelaySeconds = retryDelay
 
+        // Changing the kind discards any credential the user did not re-enter.
+        //
+        // Without this, an empty key field means "keep current" (which is what
+        // its prompt says), so switching an OpenAI provider to Ollama and
+        // pointing it at a LAN address would send the stored `sk-...` key as a
+        // bearer token, in cleartext, to a host the user never gave it to. A
+        // credential is issued for one service; it must not follow the record to
+        // another.
+        //
+        // The Keychain deletion cannot be rolled back if the save below fails.
+        // That is the safe direction to fail in: the worst case is a credential
+        // the user has to re-enter, versus one silently sent somewhere new.
+        if original.kind != kind, apiKey.isEmpty {
+          if let staleKey = provider.keychainKey {
+            try? KeychainStore.shared.delete(key: staleKey)
+          }
+          provider.keychainKey = nil
+        }
+
         // Save API Key if provided
         if !apiKey.isEmpty {
           let keychainKey = provider.keychainKey ?? "overtype-\(existingId)-key"

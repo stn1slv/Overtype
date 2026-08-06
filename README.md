@@ -7,7 +7,7 @@ It securely modifies text via macOS Accessibility APIs, completely bypassing the
 ## Features
 
 - **Clipboard Isolation**: Overtype never touches `NSPasteboard`. It reads and types text strictly through the macOS Accessibility API (`AXUIElement` & `CGEvent`).
-- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano), Google Gemini, and Anthropic Claude. (Ollama support coming soon).
+- **AI Integrations**: Natively supports OpenAI (like GPT-5.4-nano), Google Gemini, Anthropic Claude, and Ollama for models running locally on your own Mac.
 - **Global Hotkeys**: Highlight text in any application (like MS Teams or Apple Notes), hit a shortcut (e.g. ⌃⌥⌘G), and watch the text get magically replaced inline.
 - **Privacy First**: By default, sensitive text is never written to disk; only standard, sanitized application logs are recorded. Unredacted text is logged only if you explicitly enable debug logging.
 
@@ -232,6 +232,105 @@ configuration directly. Either way, no rebuild is required.
 > The setting still applies to OpenAI and Gemini providers.
 
 The shipped default configuration does not include an Anthropic provider, so a
+fresh install adds no extra provider or shortcut until you add the block above.
+
+### Using Ollama (local models)
+
+Overtype talks to a local [Ollama](https://ollama.com) service natively (it calls
+`/api/chat` directly). This is the one provider where **your text never leaves
+your Mac**: with the default configuration the only address contacted is
+`localhost`, so a run is designed to work with the machine fully offline. You can add it from
+**Settings → Providers**, where "Ollama" appears in the Kind picker, or by
+editing configuration directly. Either way, no rebuild is required.
+
+1. Install Ollama and download a model yourself. Overtype never downloads,
+   installs, starts, or stops anything on your behalf:
+
+   ```sh
+   brew install ollama     # or download from ollama.com
+   ollama serve            # start the service
+   ollama pull llama3.2    # about 2 GB
+   ```
+
+2. Add an Ollama provider block to the `"providers"` array in
+   `~/Library/Application Support/Overtype/config.json`:
+
+   ```json
+   {
+     "id": "ollama-local",
+     "kind": "ollama",
+     "defaultModel": "llama3.2",
+     "timeoutSeconds": 30.0,
+     "retryDelaySeconds": 0.5
+   }
+   ```
+
+   The `"baseURL"` may be omitted; Overtype defaults to
+   `http://localhost:11434`. Set it if your service listens on another port, or
+   runs on another machine on your network.
+
+   > Plain `http://` works for `localhost`, a `.local` name, and private LAN
+   > addresses (`192.168.x.x`, `10.x.x.x`) — macOS App Transport Security
+   > exempts local networking, verified from the built app. A service on a
+   > **public** address must use `https://`; plain HTTP to a public host is
+   > blocked by macOS and the run will fail with a network error.
+
+   `llama3.2` is recommended as the default because Overtype rewrites a
+   selection inline while you wait, so a small fast model is the difference
+   between a usable and an unusable experience on a laptop. Any model you have
+   installed works — set a heavier one per action if you want.
+
+3. **No API key is needed.** There is no `"keychainKey"` in the block above, and
+   the API Key field in Settings is marked optional for this provider — leave it
+   empty. Enter a key only if you point the provider at a remote or
+   password-protected Ollama deployment; it is then stored in the Keychain and
+   sent as an `Authorization: Bearer` header (the same scheme the
+   OpenAI-compatible provider uses; Gemini and Anthropic use their own headers).
+   Switching an existing provider's Kind to Ollama discards any key stored for
+   it, so a cloud key is never re-sent to a local endpoint.
+
+4. Point an action at the provider by setting its `"providerID"` to
+   `"ollama-local"` (optionally set a per-action `"model"` to override the
+   default).
+
+> **Size limit.** Ollama is the only provider with its own input limit. A
+> request is refused before anything is sent if its prompt is too large for the
+> model, with an error saying so. Three things determine that limit:
+>
+> - **It is measured in UTF-8 bytes**, roughly 6,000. For English that is about
+>   6,000 characters; for Chinese, Japanese or Korean it is closer to 2,000, and
+>   emoji cost more still. That is not pessimism — measured against a real model,
+>   100 CJK characters cost 328 tokens, about one per byte.
+> - **The action's system prompt counts too**, not just your selection. The
+>   shipped prompt (~170 characters) leaves a full 5,000-character selection
+>   comfortable, but an action carrying a long style guide or few-shot examples
+>   leaves correspondingly less room.
+> - **A model with a small context window gets a smaller limit.** Overtype asks
+>   the service what window your model actually has and uses half of it, since
+>   the other half is where the rewrite is generated. A 2,048-token model
+>   therefore allows about 1,024 tokens of prompt, not 6,000.
+>
+> The limit exists because the model's context window has to hold your selection
+> *and* its rewrite. Without it the service quietly drops part of your text —
+> measured, not theorised — and Overtype would replace your whole selection with
+> a rewrite of a fragment.
+
+> **The first run after a pause is slower.** Ollama unloads an idle model after
+> a few minutes and reloads it on the next request, which can take several
+> seconds on its own. Overtype deliberately does not ask the service to keep
+> your model resident — that would silently hold gigabytes of memory between
+> runs. If you want it kept loaded, use Ollama's own `OLLAMA_KEEP_ALIVE` setting.
+>
+> With `"timeoutSeconds": 30.0` a first run on slower hardware, or with a large
+> model, can hit the time limit and report a timeout. That is expected; run it
+> again once the model is loaded, or raise the provider's time limit (the
+> Settings slider goes up to 300 seconds).
+
+> **Note:** unlike Anthropic, an action's `"temperature"` **is** sent to Ollama.
+> The service applies it itself as a generation option, so every model accepts
+> it.
+
+The shipped default configuration does not include an Ollama provider, so a
 fresh install adds no extra provider or shortcut until you add the block above.
 
 ## Security & Privacy Constraints

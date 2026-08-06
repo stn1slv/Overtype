@@ -76,6 +76,37 @@ final class AppConfigTests: XCTestCase {
     }
   }
 
+  func testOllamaProviderConfigDecodesWithoutBaseURLOrKeychainKey() throws {
+    // The documented recipe: no endpoint (the provider falls back to the local
+    // default) and no credential (a local service needs none). Both omissions
+    // must decode to nil rather than failing, because that is the normal
+    // configuration for this kind, not a degenerate one.
+    let json = #"""
+      {
+        "id": "ollama-local",
+        "kind": "ollama",
+        "defaultModel": "llama3.2",
+        "timeoutSeconds": 30
+      }
+      """#
+
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(provider.kind, .ollama)
+    XCTAssertEqual(provider.id, "ollama-local")
+    XCTAssertEqual(provider.defaultModel, "llama3.2")
+    XCTAssertEqual(provider.timeoutSeconds, 30.0)
+    XCTAssertNil(provider.baseURL)
+    XCTAssertNil(provider.keychainKey)
+  }
+
+  func testOllamaProviderConfigRoundTrips() throws {
+    let original = ProviderConfig(
+      id: "ollama-local", kind: .ollama, defaultModel: "llama3.2", timeoutSeconds: 30)
+    let encoded = try JSONEncoder().encode(original)
+    let decoded = try JSONDecoder().decode(ProviderConfig.self, from: encoded)
+    XCTAssertEqual(decoded, original)
+  }
+
   // MARK: - Tolerant decoding (missing keys fall back to defaults instead of
   // failing the whole config decode)
 

@@ -134,6 +134,53 @@ final class TransformRetryTests: XCTestCase {
     XCTAssertEqual(provider.callCount, 1, "a non-retryable failure must not be retried")
   }
 
+  /// The three local-backend failures added by specs/008-ollama-provider are
+  /// permanent by construction: a service that is not running will not have
+  /// started within the retry pause, a model that is not installed will not
+  /// appear on a second identical request, and an oversized selection is
+  /// oversized twice. Each must cost exactly one call.
+  func testServiceUnreachableIsNotRetried() async {
+    let provider = ScriptedProvider([
+      .failure(ProviderError.serviceUnreachable(address: "localhost")), .success("unreached"),
+    ])
+    _ = try? await runRetry(provider)
+    XCTAssertEqual(provider.callCount, 1, "an unreachable local service must not be retried")
+  }
+
+  func testModelNotAvailableIsNotRetried() async {
+    let provider = ScriptedProvider([
+      .failure(ProviderError.modelNotAvailable(model: "llama3.2")), .success("unreached"),
+    ])
+    _ = try? await runRetry(provider)
+    XCTAssertEqual(provider.callCount, 1, "a model that is not installed must not be retried")
+  }
+
+  func testInputTooLargeForContextIsNotRetried() async {
+    let provider = ScriptedProvider([
+      .failure(ProviderError.inputTooLargeForContext(limit: 12000)), .success("unreached"),
+    ])
+    _ = try? await runRetry(provider)
+    XCTAssertEqual(provider.callCount, 1, "an oversized selection must not be retried")
+  }
+
+  func testNewLocalFailuresAreClassifiedNonRetryable() {
+    XCTAssertFalse(ProviderError.serviceUnreachable(address: "localhost").isRetryable)
+    XCTAssertFalse(ProviderError.modelNotAvailable(model: "llama3.2").isRetryable)
+    XCTAssertFalse(ProviderError.inputTooLargeForContext(limit: 12000).isRetryable)
+  }
+
+  /// The new cases must not leak their payload into a log label; only
+  /// `errorDescription`, which is shown to the user, may be specific.
+  func testNewLocalFailureLogLabelsCarryNoPayload() {
+    XCTAssertEqual(
+      ProviderError.serviceUnreachable(address: "secret-host:11434").logLabel,
+      "service unreachable")
+    XCTAssertEqual(
+      ProviderError.modelNotAvailable(model: "private-model").logLabel, "model not available")
+    XCTAssertEqual(
+      ProviderError.inputTooLargeForContext(limit: 12000).logLabel, "input too large for context")
+  }
+
   func testNonRetryableFailureShowsNoRetryProgress() async {
     let provider = ScriptedProvider([.failure(ProviderError.responseBlocked(reason: "SAFETY"))])
     var messages: [String] = []

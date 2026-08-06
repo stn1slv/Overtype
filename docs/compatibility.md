@@ -172,3 +172,103 @@ before release.
 > `AnthropicProviderTests`, which feeds synthetic bodies containing non-empty
 > `thinking` / `redacted_thinking` / unrecognised block types. Run that suite as
 > the gate; treat A9 as an end-to-end smoke check only.
+
+### Ollama (native `/api/chat`, local models)
+
+Executed 2026-08-06 against Ollama `0.32.5` on macOS 15 (Apple silicon), models
+`llama3.2` and `deepseek-r1:1.5b`, feature `008-ollama-provider`.
+
+Two different levels of verification are recorded below, and the difference
+matters. **Provider-level** means the real `OllamaProvider` was driven against
+the running service and the outcome asserted — the network call, the request
+body, the parsing, and the typed error are all real, but no text was selected in
+a real application. **End-to-end** means the full run through the built bundle:
+Accessibility read, provider call, context re-check, and synthetic typing into a
+target app. Items still marked `pending (needs manual run)` are the ones that
+require a human to select text and press the shortcut; they must be completed
+before this feature ships in a release.
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| O1 | Happy path | Selection replaced by local model output; Reading → Thinking → Writing HUD | provider-level PASS (`llama3.2` returned "The cat is sleeping."); end-to-end pending (needs manual run) |
+| O2 | Escape cancels mid-run | Run cancelled; selection unchanged | pending (needs manual run) |
+| O3 | Settings, empty key field | Provider saves; action runs; no "API Key is missing" error | pending (needs manual run); the keyless code path is covered by `OllamaProviderTests` |
+| O4 | `config.json` only | Provider registered and usable after restart | provider-level PASS (decode covered by `AppConfigTests`, registry wiring exercised live); end-to-end pending |
+| O5 | Empty Base URL | Request reaches `http://localhost:11434` | PASS (live run used a `ProviderConfig` with no `baseURL`) |
+| O6 | Cleartext loopback from the bundle | No App Transport Security block | **PASS**. Probe run from inside `Overtype.app/Contents/MacOS/`, so it read the shipped `Info.plist`: HTTP 200, not `-1022`. **No `NSAppTransportSecurity` key was needed and none was added** |
+| O7 | Service not running | Specific error naming the address; no retry | PASS (`serviceUnreachable`, message: "Could not reach the AI service at localhost:59999…" — the address includes the port, so a non-default port is diagnosable); non-retryable asserted in `TransformRetryTests` |
+| O8 | Model not installed | Specific error naming the model; no retry | PASS (`modelNotAvailable(model: "nope-xyz")` from a real 404 `{"error":"model 'nope-xyz' not found"}`) |
+| O9 | Timeout on a cold large model | Standard timeout error; selection unchanged | pending (needs manual run) |
+| O10 | Fully offline run | Run completes | pending (needs manual run — requires disabling every network interface) |
+| O11 | Only the configured address is contacted | No other host reached | pending (needs manual run with a network monitor) |
+| O12 | Reasoning model writes no reasoning | Only the answer; no reasoning text, no `<think>` markers | **PASS** (provider-level, `deepseek-r1:1.5b`). See the note below |
+| O13 | Logs at the default level | No selected text or model output | pending (needs manual run) |
+| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (229 tests, 0 failures); live cloud run pending |
+| O15 | Full-size selection at the 5000-character default | Rewritten whole, no silent shortening | pending (needs manual run) |
+| O16 | Selection above 6000 characters | Specific error naming the limit; nothing sent; no retry | PASS (`OllamaProviderTests`, `checkInputSize`); end-to-end pending |
+
+> **O12 does verify the reasoning filter here, unlike Anthropic's A9.** Sending
+> no `think` field was expected to leave reasoning behaviour to the model, and a
+> direct capture confirmed what actually happens on this version: with
+> `deepseek-r1:1.5b` and no `think` field, the response carried a **non-empty
+> `message.thinking`** ("Okay, so I need to correct the sentence…") alongside a
+> clean `message.content`. Layer 1 of the filter — reading `content` only — is
+> therefore doing real work against a real payload, not passing vacuously. Layer
+> 2 (stripping an inline `<think>` block) did not trigger on this model and is
+> covered by unit tests instead; it exists for models and versions that inline
+> their reasoning rather than separating it.
+
+> **Wire contract confirmed empirically, not assumed.** The request body Overtype
+> sends (`stream: false`, `options.temperature`, `options.num_ctx`) was accepted
+> as-is by the running service, and the unknown-model error shape was captured
+> from it directly. Note the message wording differs from Ollama's documentation
+> (`model 'x' not found`, without the documented "try pulling it first" suffix),
+> which is why `isModelNotFound` matches on `"not found"` plus HTTP 404 rather
+> than on the full documented sentence.
+
+#### Ollama context-window behaviour (measured 2026-08-06)
+
+Two properties of the service were established by measurement rather than
+assumed, because the feature's non-destructiveness guarantee depends on them and
+both turned out to contradict the reasonable-sounding assumption. Setup: Ollama
+`0.32.5`, model `tinyllama` (`/api/show` reports `llama.context_length: 2048`),
+`num_ctx: 16384` requested on every call.
+
+**1. An over-long prompt is truncated to half the window, silently.**
+
+| Input characters | `prompt_eval_count` | Interpretation |
+|---|---|---|
+| 100 | 328 | evaluated whole |
+| 400 | 1194 | evaluated whole |
+| 800 | 1026 | truncated |
+| 1200 | 1026 | truncated |
+| 2000 | 1026 | truncated |
+| 4000 | 1026 | truncated |
+
+`done_reason` was `stop` in every case — the truncation is not reported. 1026 is
+half of the 2048 window plus special tokens. Overtype therefore treats
+`grantedWindow / 2` as the usable prompt budget and refuses a larger prompt
+before sending.
+
+This also falsified a first attempt at the guard, which compared
+`prompt_eval_count` against the *full* granted window: a real truncation reports
+1026 against a window of 2048, so the check never fired. It was caught by running
+it against this model, not by review.
+
+**2. The tokenizer falls back to bytes, so characters are not a proxy for
+tokens.** 100 randomly chosen CJK characters (300 UTF-8 bytes) cost **328
+tokens** — about one per byte, not one per character. Overtype's size estimate
+counts UTF-8 bytes for this reason.
+
+**Regression check**: if a future Ollama version changes either behaviour, the
+symptom will be Ollama actions refusing selections that used to work (harmless,
+visible) rather than silently rewriting fragments. Re-run the table above before
+changing `promptBudget` or `estimatedTokens`.
+
+**Guard arithmetic (round 5).** The measured `+30` template overhead is why the
+prompt budget sits at `window / 2 - 2 × 128` rather than at `window / 2`: the
+largest legitimate prompt must evaluate strictly below the truncation signal, or
+the two are indistinguishable. `testALegitimatePromptCanNeverReachTheTruncation‑
+Signal` asserts that gap across five window sizes. Verified live against
+`tinyllama`: a 2000-character selection is refused with a limit of **768**, the
+budget that model's window actually allows, not the fixed 6000.

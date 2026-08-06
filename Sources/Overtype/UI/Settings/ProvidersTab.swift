@@ -16,11 +16,12 @@ public struct ProvidersTab: View {
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
 
-  /// Kinds selectable in the form. Ollama is still an unimplemented stub in
-  /// ProviderRegistry and stays hidden; a hand-edited config using it still
-  /// shows its current kind so editing does not silently change it.
+  /// Kinds selectable in the form. All four are implemented as of
+  /// specs/008-ollama-provider; the fallback below stays because a hand-edited
+  /// config may still name a kind this list does not, and editing such a
+  /// provider must not silently change its kind.
   private var selectableKinds: [ProviderKind] {
-    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic]
+    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic, .ollama]
     if let current = editingProvider?.kind, !kinds.contains(current) {
       kinds.append(current)
     }
@@ -29,20 +30,36 @@ public struct ProvidersTab: View {
 
   /// Hint shown in the empty Base URL field.
   ///
-  /// The hints are not all the same kind of statement. Gemini and Anthropic fall
-  /// back to a documented default host when the field is blank, so theirs are
-  /// prefixed "Default:" and leaving the field empty is a valid choice. An
-  /// OpenAI-compatible provider has no fallback — `OpenAICompatibleProvider`
-  /// throws `.invalidURL` when `baseURL` is nil — so its hint is an example to
-  /// copy, and leaving the field empty fails at run time. Ollama is not
-  /// implemented and its hint is only a placeholder for the hidden kind.
+  /// The hints are not all the same kind of statement. Gemini, Anthropic and
+  /// Ollama fall back to a documented default host when the field is blank, so
+  /// theirs are prefixed "Default:" and leaving the field empty is a valid
+  /// choice. An OpenAI-compatible provider has no fallback —
+  /// `OpenAICompatibleProvider` throws `.invalidURL` when `baseURL` is nil — so
+  /// its hint is an example to copy, and leaving the field empty fails at run
+  /// time.
   private func baseURLPlaceholder(for kind: ProviderKind) -> String {
     switch kind {
     case .openAICompatible: return "https://api.openai.com/v1"
     case .gemini: return "Default: generativelanguage.googleapis.com"
     case .anthropic: return "Default: api.anthropic.com"
-    case .ollama: return "http://localhost:11434"
+    case .ollama: return "Default: http://localhost:11434"
     }
+  }
+
+  /// Prompt for the API key field.
+  ///
+  /// Ollama is the one kind that normally needs no credential, because the
+  /// service runs on the user's own machine. A prompt that reads as mandatory
+  /// would make the normal setup look broken, so it is marked optional here
+  /// (specs/008-ollama-provider FR-005). An empty value is accepted for every
+  /// kind by `SettingsViewModel.saveProvider`; only the wording differs.
+  private func apiKeyPrompt(for kind: ProviderKind) -> String {
+    if kind == .ollama {
+      return editingProvider == nil
+        ? "API Key (optional, not needed for a local service)"
+        : "API Key (optional; leave empty to keep current)"
+    }
+    return editingProvider == nil ? "API Key" : "API Key (Leave empty to keep current)"
   }
 
   private func kindLabel(_ kind: ProviderKind) -> String {
@@ -50,7 +67,7 @@ public struct ProvidersTab: View {
     case .openAICompatible: return "OpenAI-compatible"
     case .gemini: return "Gemini"
     case .anthropic: return "Anthropic"
-    case .ollama: return "Ollama (not implemented)"
+    case .ollama: return "Ollama"
     }
   }
 
@@ -150,9 +167,7 @@ public struct ProvidersTab: View {
                 + "Only transient failures (network errors, timeouts, rate limits, "
                 + "server errors) are retried. Set to 0 to retry immediately.")
 
-            SecureField(
-              editingProvider == nil ? "API Key" : "API Key (Leave empty to keep current)",
-              text: $apiKey)
+            SecureField(apiKeyPrompt(for: kind), text: $apiKey)
           }
         }
         .padding()
