@@ -21,6 +21,27 @@ You can easily install Overtype using our custom Homebrew tap:
 brew install stn1slv/tap/overtype
 ```
 
+Homebrew prints these notes after installing and after every upgrade; they are
+repeated here because both are easy to hit.
+
+**First launch may be blocked.** Overtype is ad-hoc signed and not notarized, so
+Gatekeeper can refuse to open it. Remove the quarantine attribute and try again:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Overtype.app"
+```
+
+**Accessibility permission must be re-granted after every upgrade.** macOS ties
+the permission to the app's code signature, and an ad-hoc signature changes with
+every build, so an upgraded copy is a different app as far as the system is
+concerned. The catch is that the old entry stays in the list and stays enabled,
+so nothing looks wrong while Overtype silently fails to read your selection. In
+**System Settings > Privacy & Security > Accessibility**, select Overtype,
+remove it with the `-` button, then add the upgraded app and enable it.
+
+Both go away if the app is ever signed with an Apple Developer ID certificate
+and notarized.
+
 ### Manual Installation
 
 1. **Build the Application**:
