@@ -75,10 +75,16 @@ if [ -f "$APP_BUNDLE/Contents/Info.plist" ]; then
     fi
 fi
 
-# Copy every SwiftPM resource bundle (our own and dependencies') next to the
-# executable. KeyboardShortcuts crashes on first use of its Recorder view
-# because Bundle.module hard-fails when KeyboardShortcuts_KeyboardShortcuts.bundle
-# is missing, so all *.bundle directories must ship inside the app.
+# Copy every SwiftPM resource bundle (our own and dependencies') into
+# Contents/Resources. That is the only legal home for them: macOS forbids any
+# entry beside `Contents` in a bundle root, so codesign rejects the alternative
+# with "unsealed contents present in the bundle root".
+#
+# KeyboardShortcuts' Recorder view (Settings > Actions > Add/Edit) needs
+# KeyboardShortcuts_KeyboardShortcuts.bundle to render. It is vendored and
+# patched to read this location and to degrade gracefully when it is absent;
+# see Vendor/KeyboardShortcuts/VENDORING.md for why upstream could not be used
+# as-is. Keep the copy here and the patch there in sync.
 shopt -s nullglob
 for bundle in "$BIN_DIR"/*.bundle; do
     dest="$APP_BUNDLE/Contents/Resources/$(basename "$bundle")"
@@ -87,6 +93,21 @@ for bundle in "$BIN_DIR"/*.bundle; do
     cp -R "$bundle" "$dest"
 done
 shopt -u nullglob
+
+# Fail the build rather than shipping an app whose shortcut recorder silently
+# falls back to untranslated labels. This guards the packaging regression that
+# shipped twice (311aff7 and its predecessor).
+#
+# KeyboardShortcuts is named explicitly rather than checking only what the loop
+# above copied: if SwiftPM stopped emitting the bundle entirely, a loop over
+# "$BIN_DIR"/*.bundle would match nothing and assert nothing.
+KS_BUNDLE="KeyboardShortcuts_KeyboardShortcuts.bundle"
+if [ ! -d "$APP_BUNDLE/Contents/Resources/$KS_BUNDLE" ]; then
+    echo "Error: $KS_BUNDLE is missing from $APP_BUNDLE/Contents/Resources." >&2
+    echo "       The Settings > Actions shortcut recorder needs it; see" >&2
+    echo "       Vendor/KeyboardShortcuts/VENDORING.md." >&2
+    exit 1
+fi
 
 echo "Codesigning (ad-hoc)..."
 codesign --force --deep --sign - -i com.github.stn1slv.Overtype "$APP_BUNDLE"
