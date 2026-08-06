@@ -43,6 +43,17 @@ the native macOS prompt), creates the status-bar item, loads `ConfigStore`, has
 third-party `KeyboardShortcuts` package), and installs Escape-key monitors that
 cancel any in-flight run.
 
+`KeyboardShortcuts` 1.15.0 is **vendored** under `Vendor/KeyboardShortcuts` and
+consumed with `.package(path:)`, not fetched from GitHub. Upstream's
+SwiftPM-generated `Bundle.module` calls `fatalError` and probes only two paths,
+both unreachable from a signable `.app` (the bundle root, where macOS forbids
+anything beside `Contents`, and the build machine's absolute `.build` path), so
+`Settings > Actions > Add/Edit` crashed in every release. The vendored copy
+carries one patch, in `Utilities.swift`, replacing that accessor with a lookup
+that reads `Contents/Resources` and degrades to the untranslated key instead of
+trapping. `Vendor/KeyboardShortcuts/VENDORING.md` records the upstream revision
+and the exact patch; re-apply it on any upgrade and do not restore a remote pin.
+
 The core pipeline lives in `Core/ActionEngine.swift` (`run(action:)`). One run
 is a strict sequence, each stage gated on the previous succeeding:
 

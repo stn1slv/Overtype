@@ -93,6 +93,36 @@ entries before the next release. H2 is recorded as an inference, not a direct
 observation: the focus-critical properties (`.nonactivatingPanel`,
 `canBecomeKey`/`canBecomeMain`) are unchanged by this branch.
 
+## Shortcut Recorder Acceptance
+
+`KeyboardShortcuts.Recorder` (Settings > Actions > Add Action / Edit) used to
+trap on first render: upstream's SwiftPM-generated `Bundle.module` calls
+`fatalError` and probes only the `.app` root and the build machine's absolute
+`.build` path, neither of which a shipped app can satisfy. The library is now
+vendored with a patched lookup; see `Vendor/KeyboardShortcuts/VENDORING.md`.
+
+Whether a resource bundle resolves at runtime cannot be unit-tested with mocks,
+because `Bundle.main` in a test process is the test runner, not the `.app`. It
+is therefore verified here, against a real built bundle.
+
+**Status: PASS** (2026-08-06, ad-hoc local build of
+`fix/keyboardshortcuts-resource-bundle-path`).
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| K1 | Settings > Actions > Add Action | Sheet opens with a working recorder; no crash | 2026-08-06 pass |
+| K2 | Settings > Actions > Edit on "Fix grammar" | Sheet opens with the existing shortcut shown; no crash | 2026-08-06 pass |
+| K3 | Resource bundle loads from the built `.app` | All 14 localizations present; `record_shortcut` / `press_shortcut` resolve from `Contents/Resources` | 2026-08-06 pass (scripted check against the built bundle) |
+| K4 | `codesign --verify --deep --strict` | Valid on disk; satisfies its Designated Requirement | 2026-08-06 pass |
+| K5 | Build guard fires when the bundle is absent | `build-app.sh` exits 1 **before** `codesign` | 2026-08-06 pass |
+
+Note on K4: `spctl -a` still reports `rejected`, which is expected and
+pre-existing for an ad-hoc signed build (the shipped 1.2.3 release behaves
+identically). Do not read that as a regression. What *would* be a regression is
+`codesign` itself failing with "unsealed contents present in the bundle root" —
+that is what placing the resource bundle beside `Contents` causes, and it is why
+the bundle must stay in `Contents/Resources`.
+
 ## Retry Acceptance
 
 `ActionEngine.transformWithRetry` retries a failed provider call once when
