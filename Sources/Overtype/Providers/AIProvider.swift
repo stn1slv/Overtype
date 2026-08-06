@@ -82,8 +82,9 @@ public enum ProviderError: Error, LocalizedError {
       // Characters cannot make this run succeed — it makes the same selection
       // fail earlier, with a different message.
       return
-        "The selection is too large for this provider (limit \(limit) characters). "
-        + "Select less text and try again. Nothing was changed."
+        "The selection is too large for this provider (limit \(limit) characters, "
+        + "including the action's prompt). Select less text and try again. "
+        + "Nothing was changed."
     }
   }
 

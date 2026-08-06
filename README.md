@@ -290,6 +290,15 @@ editing configuration directly. Either way, no rebuild is required.
    `"ollama-local"` (optionally set a per-action `"model"` to override the
    default).
 
+> **Size limit.** Ollama is the only provider with its own input limit: a
+> request whose prompt exceeds 6,000 characters (the selection with the action's
+> prompt around it) is refused before anything is sent, with an error saying so.
+> The default action limit of 5,000 characters stays comfortably under it, so you
+> will only meet this if you raise Max Characters in the Actions tab. The limit
+> exists because the model's context window has to hold your selection *and* its
+> rewrite; without it the service would quietly drop part of your text and
+> Overtype would replace the whole selection with a rewrite of a fragment.
+
 > **The first run after a pause is slower.** Ollama unloads an idle model after
 > a few minutes and reloads it on the next request, which can take several
 > seconds on its own. Overtype deliberately does not ask the service to keep

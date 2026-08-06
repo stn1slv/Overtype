@@ -49,7 +49,7 @@ Exception IV-b in `plan.md`.
 |---|---|---|---|---|
 | `serviceUnreachable(address: String)` | endpoint host from config | names the address and says the service does not appear to be running | `"service unreachable"` | `false` |
 | `modelNotAvailable(model: String)` | resolved model name from the request | names the model and says it is not installed locally | `"model not available"` | `false` |
-| `inputTooLargeForContext(limit: Int)` | `maxSafeInputCharacters` | states the character limit and points at the action's Max Characters setting | `"input too large for context"` | `false` |
+| `inputTooLargeForContext(limit: Int)` | `maxSafeInputCharacters` | states the character limit (including the action's prompt) and tells the user to select less text | `"input too large for context"` | `false` |
 
 Every payload originates in the user's own configuration or in a compile-time
 constant, never in server-authored text or the selection, so `errorDescription`
@@ -77,7 +77,7 @@ without a network.
 | `defaultBaseURLString` | `static let String` | `"http://localhost:11434"` | via `endpointURL` |
 | `contextWindowTokens` | `static let Int` | `16384` (R3) | via `requestBody` |
 | `maxSafeInputCharacters` | `static let Int` | `6000` — the pre-send bound for FR-010b (R3) | via `checkInputSize` |
-| `checkInputSize(_:)` | `static func` | throws `inputTooLargeForContext(limit:)` above the bound | yes |
+| `checkInputSize(systemPrompt:userPrompt:)` | `static func` | throws `inputTooLargeForContext(limit:)` when the composed prompt exceeds the bound | yes |
 | `endpointURL(base:)` | `static func` | `{base}/api/chat`, slash-normalised | yes |
 | `requestBody(model:systemPrompt:userPrompt:temperature:)` | `static func` | Body per contract; asserts `stream: false`, `num_ctx`, role split | yes |
 | `stripLeadingReasoningBlock(_:)` | `static func` | FR-009 layer 2, table in the contract | yes |

@@ -203,7 +203,7 @@ before this feature ships in a release.
 | O11 | Only the configured address is contacted | No other host reached | pending (needs manual run with a network monitor) |
 | O12 | Reasoning model writes no reasoning | Only the answer; no reasoning text, no `<think>` markers | **PASS** (provider-level, `deepseek-r1:1.5b`). See the note below |
 | O13 | Logs at the default level | No selected text or model output | pending (needs manual run) |
-| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (203 tests, 0 failures); live cloud run pending |
+| O14 | Existing providers unaffected | OpenAI/Gemini/Anthropic behave as before | PASS for unit coverage (211 tests, 0 failures); live cloud run pending |
 | O15 | Full-size selection at the 5000-character default | Rewritten whole, no silent shortening | pending (needs manual run) |
 | O16 | Selection above 6000 characters | Specific error naming the limit; nothing sent; no retry | PASS (`OllamaProviderTests`, `checkInputSize`); end-to-end pending |
 

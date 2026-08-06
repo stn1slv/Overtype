@@ -86,13 +86,32 @@ final class OllamaProviderTests: XCTestCase {
 
   func testInputAtTheLimitIsAccepted() {
     let text = String(repeating: "a", count: OllamaProvider.maxSafeInputCharacters)
-    XCTAssertNoThrow(try OllamaProvider.checkInputSize(text))
+    XCTAssertNoThrow(try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: text))
+  }
+
+  func testTheSystemPromptCountsTowardTheLimit() {
+    // The bound must measure what is sent. A selection just under the limit
+    // plus a long system prompt still overflows the window.
+    let userPrompt = String(repeating: "a", count: OllamaProvider.maxSafeInputCharacters - 10)
+    XCTAssertThrowsError(
+      try OllamaProvider.checkInputSize(
+        systemPrompt: String(repeating: "s", count: 100), userPrompt: userPrompt))
+  }
+
+  func testATemplateRepeatingTheSelectionCountsTwice() {
+    // `{{text}}` is replaced at every occurrence, so a template naming it twice
+    // doubles the input. Measuring the rendered prompt catches that; measuring
+    // the selection would not.
+    let selection = String(repeating: "a", count: 4000)
+    let rendered = "\(selection)\n\n\(selection)"
+    XCTAssertThrowsError(
+      try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: rendered))
   }
 
   func testInputAboveTheLimitIsRefusedWithTheLimitAttached() {
     let text = String(repeating: "a", count: OllamaProvider.maxSafeInputCharacters + 1)
     do {
-      try OllamaProvider.checkInputSize(text)
+      try OllamaProvider.checkInputSize(systemPrompt: "", userPrompt: text)
       XCTFail("expected an oversized selection to be refused")
     } catch let error as ProviderError {
       guard case .inputTooLargeForContext(let limit) = error else {
@@ -124,10 +143,15 @@ final class OllamaProviderTests: XCTestCase {
   }
 
   func testTheSizeBoundNeverRefusesASelectionTheDefaultActionCapAllows() {
-    // The default ActionConfig.maxInputCharacters is 5000. If the provider
-    // bound dropped below it, ordinary out-of-the-box selections would start
-    // being refused.
-    XCTAssertGreaterThanOrEqual(OllamaProvider.maxSafeInputCharacters, 5000)
+    // If the provider bound dropped below the default action cap, ordinary
+    // out-of-the-box selections would start being refused. Read the default
+    // from ActionConfig rather than hardcoding it, so raising that default
+    // fails this test instead of silently breaking the invariant.
+    let defaultCap = ActionConfig(
+      id: "t", title: "t", enabled: true, providerID: "p", systemPrompt: "",
+      userPromptTemplate: "{{text}}"
+    ).maxInputCharacters
+    XCTAssertGreaterThanOrEqual(OllamaProvider.maxSafeInputCharacters, defaultCap)
   }
 
   // MARK: - stripLeadingReasoningBlock (FR-009 layer 2)
@@ -191,6 +215,34 @@ final class OllamaProviderTests: XCTestCase {
       OllamaProvider.stripLeadingReasoningBlock("<think>one</think><thinking>two</thinking>"), "")
   }
 
+  func testReasoningWithNoOpeningMarkerIsRemoved() {
+    // The DeepSeek-R1 shape: the chat template puts `<think>` in the PROMPT, so
+    // the completion starts with bare reasoning and ends with a lone closing
+    // marker. Without this rule the reasoning is typed into the document.
+    let result = OllamaProvider.stripLeadingReasoningBlock(
+      "Okay, the subject is singular so the verb must be singular.\n</think>\nThe cat is sleeping.")
+    XCTAssertEqual(result, "The cat is sleeping.")
+  }
+
+  func testOrphanClosingMarkerWithNoAnswerYieldsEmpty() {
+    XCTAssertEqual(OllamaProvider.stripLeadingReasoningBlock("reasoning only</think>"), "")
+  }
+
+  func testAPairedBlockMidTextIsStillLeftAlone() {
+    // The orphan rule must not fire when an opening marker precedes the closing
+    // one, or it would eat legitimate text the user asked to have rewritten.
+    let text = "Use the <think> tag to mark reasoning.</think> That is the convention."
+    XCTAssertEqual(OllamaProvider.stripLeadingReasoningBlock(text), text)
+  }
+
+  func testNestedBlocksLeaveNoResidue() {
+    // The inner closing marker ends the outer block, leaving `tail</think>...`,
+    // which the orphan rule then clears.
+    let result = OllamaProvider.stripLeadingReasoningBlock(
+      "<think>outer <think>inner</think> tail</think>Answer.")
+    XCTAssertEqual(result, "Answer.")
+  }
+
   func testUnterminatedSecondBlockYieldsEmpty() {
     // The first block closes, the second never does: everything after it is
     // reasoning, so nothing may be written.
@@ -251,6 +303,38 @@ final class OllamaProviderTests: XCTestCase {
         return XCTFail("expected emptyResponse, got \(error)")
       }
     }
+  }
+
+  func testATruncatedPromptIsDetectedAndRefused() {
+    // prompt_eval_count at the window means the service clipped the prompt, so
+    // the answer was produced from part of the selection only. Writing it would
+    // overwrite the whole selection with a rewrite of a fragment.
+    var json: [String: Any] = [
+      "model": "llama3.2",
+      "message": ["role": "assistant", "content": "a partial rewrite"],
+      "done": true,
+      "prompt_eval_count": OllamaProvider.contextWindowTokens,
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: json) else {
+      return XCTFail("bad fixture")
+    }
+    XCTAssertThrowsError(try OllamaProvider.parseResponseText(from: data)) { error in
+      guard case ProviderError.inputTooLargeForContext = error else {
+        return XCTFail("expected inputTooLargeForContext, got \(error)")
+      }
+    }
+
+    // A normal count is not refused.
+    json["prompt_eval_count"] = 42
+    guard let ok = try? JSONSerialization.data(withJSONObject: json) else {
+      return XCTFail("bad fixture")
+    }
+    XCTAssertEqual(try? OllamaProvider.parseResponseText(from: ok), "a partial rewrite")
+  }
+
+  func testAbsentPromptEvalCountIsNotTreatedAsTruncation() {
+    let data = responseData(["role": "assistant", "content": "The cat is sleeping."])
+    XCTAssertEqual(try? OllamaProvider.parseResponseText(from: data), "The cat is sleeping.")
   }
 
   func testMalformedBodyIsAnInvalidResponseError() {
@@ -417,7 +501,15 @@ final class OllamaProviderTests: XCTestCase {
     // The only coverage of the credential path: every manual acceptance item
     // runs keyless against a local service.
     let key = "overtype-test-ollama-\(UUID().uuidString)"
-    try KeychainStore.shared.store(key: key, value: "secret-token")
+    do {
+      try KeychainStore.shared.store(key: key, value: "secret-token")
+    } catch {
+      // The login keychain may be locked or absent (unattended CI). Skip rather
+      // than fail: the constitution treats the Keychain as system-boundary work
+      // verified by manual acceptance, so this test is a local convenience, not
+      // a gate.
+      throw XCTSkip("Keychain unavailable in this environment: \(error)")
+    }
     defer { try? KeychainStore.shared.delete(key: key) }
 
     XCTAssertEqual(

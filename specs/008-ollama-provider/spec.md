@@ -282,10 +282,17 @@ address contacted during a run is the configured local one.
   raised above what that fixed context size holds, the system MUST refuse an
   Ollama run, before sending anything, when the selection is larger than the
   context size can safely hold. The refusal MUST be a specific, typed,
-  human-readable error naming the setting the user can lower, MUST leave the
-  selection unchanged, and MUST NOT be retried. The bound it compares against
-  MUST be a fixed conservative constant derived once from the context size, not
-  a per-request estimate.
+  human-readable error stating the limit and an action the user can actually
+  take, MUST leave the selection unchanged, and MUST NOT be retried. The bound
+  it compares against MUST be a fixed conservative constant derived once from
+  the context size, not a per-request estimate, and MUST be measured against
+  what is actually sent to the model (the action's prompt with the selection
+  substituted, plus the system prompt) rather than against the selection alone.
+  (Revised 2026-08-06: the original wording required the message to name the
+  action's Max Characters setting. Implementation review established that
+  lowering that setting cannot make the run succeed — it makes the same
+  selection fail earlier with a different message — so naming it was misleading
+  advice.)
 - **FR-011**: The system MUST NOT download, install, or otherwise modify the
   user's locally installed models, and MUST NOT start or stop the local service.
   Its only interaction with the service is issuing the transformation request.

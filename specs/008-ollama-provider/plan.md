@@ -38,7 +38,7 @@ Five decisions from the two clarification sessions shape the request: read only
 `message.content` and never `message.thinking`, plus strip a leading
 `<think>…</think>` block (reasoning must never reach the document); send
 `temperature` (unlike Anthropic — Ollama accepts it uniformly); send
-`num_ctx: 8192`; send nothing about `keep_alive`; never require a credential.
+`num_ctx: 16384` with a 6000-character pre-send bound; send nothing about `keep_alive`; never require a credential.
 Default model is `llama3.2` with a 30-second time limit; the shipped default
 config is unchanged.
 
@@ -57,7 +57,7 @@ record) and, optionally, the macOS Keychain. Neither schema changes; see
 
 **Testing**: XCTest via `swift test` for pure logic (request body construction,
 response parsing, reasoning stripping, error extraction and mapping, endpoint
-construction, retry classification of the two new cases, config decode).
+construction, retry classification of the three new cases, config decode).
 System-boundary behaviour (a real HTTP call to a running Ollama, the ATS check
 from the bundle, the offline run) is verified by the manual acceptance procedure
 in `quickstart.md` and recorded in `docs/compatibility.md`.
@@ -83,9 +83,9 @@ one. No secret, selected text, or model output in logs at `info` or above. Force
 unwrapping forbidden except commented Core Foundation casts (none expected
 here). Cleartext `http://` to loopback must work (FR-008).
 
-**Scale/Scope**: Small. One new provider file (~180 lines, larger than
+**Scale/Scope**: Small. One new provider file (~400 lines, larger than
 `AnthropicProvider` because of the transport-error mapping and the reasoning
-strip), two new error cases with their three switch arms, one registry line,
+strip), three new error cases with their three switch arms, one registry line,
 four small edits in one Settings view, a new test file, and doc updates.
 
 ## Constitution Check
@@ -93,12 +93,12 @@ four small edits in one Settings view, a new test file, and doc updates.
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
 - **I. Clipboard Isolation (NON-NEGOTIABLE)**: PASS. The feature adds a network
-  provider, two error cases, and picker entries. No `NSPasteboard` use;
+  provider, three error cases, and picker entries. No `NSPasteboard` use;
   `rg NSPasteboard Sources/` stays clean.
 - **II. Non-Destructive by Default (NON-NEGOTIABLE)**: PASS, and strengthened.
   `OllamaProvider` only returns text into the existing pipeline; the
   frontmost-app / pid / focused-element re-check before writing is unchanged, and
-  every Ollama failure — including both new error cases and a reasoning-only
+  every Ollama failure — including all three new error cases and a reasoning-only
   response — throws before any write. The feature also **closes** a
   local-specific destruction path that would otherwise exist: without a fixed
   `num_ctx`, an oversized prompt is silently shortened by the service and the
@@ -255,7 +255,7 @@ specs/008-ollama-provider/
 ├── spec.md              # From /speckit-specify + two /speckit-clarify sessions
 ├── research.md          # Phase 0 output (R1-R12)
 ├── data-model.md        # Phase 1 output
-├── quickstart.md        # Phase 1 output (acceptance O1-O15)
+├── quickstart.md        # Phase 1 output (acceptance O1-O16)
 ├── contracts/
 │   └── ollama-chat.md   # POST /api/chat request/response contract
 └── checklists/
@@ -288,7 +288,7 @@ Tests/OvertypeTests/
 └── AppConfigTests.swift             # EDIT: Ollama ProviderConfig decode, keyless + no baseURL
 
 docs/
-├── compatibility.md                 # EDIT: Ollama manual acceptance section (O1-O15)
+├── compatibility.md                 # EDIT: Ollama manual acceptance section (O1-O16)
 └── privacy.md                       # EDIT: Ollama as a destination; local-only phrasing
 
 README.md                            # EDIT: Ollama recipe; drop "coming soon" from line 10

@@ -97,9 +97,18 @@ public class OllamaProvider: AIProvider {
   }
 
   public func transform(_ request: TransformRequest) async throws -> String {
+    let userPrompt = request.userPromptTemplate.replacingOccurrences(
+      of: "{{text}}", with: request.text)
+
     // First, before a URL, a body, or the Keychain is touched: an oversized
-    // selection costs nothing and reaches nothing.
-    try Self.checkInputSize(request.text)
+    // request costs nothing and reaches nothing.
+    //
+    // Measured on what is actually SENT, not on `request.text`. Two ways the
+    // selection alone understates the prompt: `replacingOccurrences` substitutes
+    // every `{{text}}`, so a template naming it twice doubles the input, and the
+    // system prompt is user-editable and uncapped. Checking the selection would
+    // let either exceed the window while the guard stayed silent.
+    try Self.checkInputSize(systemPrompt: request.systemPrompt, userPrompt: userPrompt)
 
     let url = try Self.endpointURL(base: config.baseURL)
 
@@ -119,9 +128,6 @@ public class OllamaProvider: AIProvider {
     if let header = Self.authorizationHeader(forKeychainKey: config.keychainKey) {
       urlRequest.addValue(header, forHTTPHeaderField: "Authorization")
     }
-
-    let userPrompt = request.userPromptTemplate.replacingOccurrences(
-      of: "{{text}}", with: request.text)
 
     urlRequest.httpBody = try JSONSerialization.data(
       withJSONObject: Self.requestBody(
@@ -174,10 +180,14 @@ public class OllamaProvider: AIProvider {
     return "\(host):\(port)"
   }
 
-  /// Refuses a selection larger than `maxSafeInputCharacters` (FR-010b).
-  /// Pure logic, unit-tested.
-  static func checkInputSize(_ text: String) throws {
-    if text.count > maxSafeInputCharacters {
+  /// Refuses a request whose prompt exceeds `maxSafeInputCharacters` (FR-010b).
+  ///
+  /// Takes the composed prompt rather than the raw selection, because the
+  /// selection is not what reaches the model: the action's template may repeat
+  /// `{{text}}`, and the system prompt is user-editable. Pure logic,
+  /// unit-tested.
+  static func checkInputSize(systemPrompt: String, userPrompt: String) throws {
+    if systemPrompt.count + userPrompt.count > maxSafeInputCharacters {
       throw ProviderError.inputTooLargeForContext(limit: maxSafeInputCharacters)
     }
   }
@@ -279,6 +289,22 @@ public class OllamaProvider: AIProvider {
       throw ProviderError.invalidResponse
     }
 
+    // Verify, rather than assume, that the prompt reached the model whole.
+    //
+    // Everything else in this provider's size handling is preventive: it sends
+    // `num_ctx` and refuses an oversized request up front. Both rely on the
+    // service honouring the window, and if it does not, the truncation is
+    // silent by definition — which is the one failure this feature was built to
+    // avoid. `prompt_eval_count` is the only observable signal available: a
+    // prompt clipped to the window reports a count at the window. Discarding an
+    // answer that was produced from a truncated prompt costs the user a
+    // visible error; writing it costs them part of their text.
+    if let promptTokens = json["prompt_eval_count"] as? Int,
+      promptTokens >= contextWindowTokens
+    {
+      throw ProviderError.inputTooLargeForContext(limit: maxSafeInputCharacters)
+    }
+
     let text = stripLeadingReasoningBlock(content)
     if text.isEmpty {
       throw ProviderError.emptyResponse
@@ -327,7 +353,51 @@ public class OllamaProvider: AIProvider {
       }
     }
 
-    return current
+    return stripOrphanReasoningPrefix(current)
+  }
+
+  /// Removes reasoning that has a CLOSING marker but no opening one.
+  ///
+  /// This shape is not hypothetical and is arguably the more common of the two.
+  /// DeepSeek-R1's chat template appends `<think>` to the *prompt*, so the
+  /// completion begins with bare reasoning and ends with a lone `</think>`:
+  ///
+  ///     "Okay, the subject is singular...\n</think>\nThe cat is sleeping."
+  ///
+  /// Layer 1 usually catches it, because Ollama splits such models' output into
+  /// `message.thinking`. But that split depends on the served model declaring
+  /// the thinking capability, and a custom Modelfile or a community GGUF may not
+  /// — in which case the raw completion arrives in `content` and, without this
+  /// rule, model scratch work would be typed over the user's selection.
+  ///
+  /// ACCEPTED TRADEOFF, do not "simplify" without reading this: text a user
+  /// legitimately selected could contain a closing marker with its opening tag
+  /// outside the selection (someone editing prose *about* this markup). That
+  /// text would be cut. The rule is deliberately narrowed to make this as rare
+  /// as possible — it fires only when NO opening marker precedes the closing
+  /// one, so a properly paired block anywhere in the text is left alone — and
+  /// the trade was made toward cutting rare prose over writing model reasoning
+  /// into a document, because reasoning leakage is silent and unbounded while
+  /// this is visible in the result.
+  static func stripOrphanReasoningPrefix(_ text: String) -> String {
+    for tag in ["think", "thinking"] {
+      let open = "<\(tag)>"
+      let close = "</\(tag)>"
+
+      guard let closeRange = text.range(of: close, options: .caseInsensitive) else { continue }
+
+      // A matched pair is not the orphan shape; leave it to the caller's rules.
+      if let openRange = text.range(of: open, options: .caseInsensitive),
+        openRange.lowerBound < closeRange.lowerBound
+      {
+        continue
+      }
+
+      return String(text[closeRange.upperBound...])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    return text
   }
 
   /// Best-effort extraction of Ollama's `{ "error": "<string>" }` body.
