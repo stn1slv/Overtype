@@ -8,6 +8,7 @@ public enum AXError: Error, LocalizedError {
   case cannotReadSelectedText
   case cannotWriteSelectedText
   case modifiersHeldTooLong
+  case writeIncomplete
 
   public var errorDescription: String? {
     switch self {
@@ -20,7 +21,10 @@ public enum AXError: Error, LocalizedError {
       return "Cannot write text. The application might not support Accessibility API."
     case .modifiersHeldTooLong:
       return
-        "Modifier keys were held too long. Release Cmd/Option/Control and try again. Nothing was changed."
+        "Modifier keys were held too long. Release Cmd/Option/Control/Shift and try again. Nothing was changed."
+    case .writeIncomplete:
+      return
+        "Writing was interrupted; the replacement may be incomplete. Use Undo (Cmd+Z) in the target application to restore the original text."
     }
   }
 }

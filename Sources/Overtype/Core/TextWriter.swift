@@ -31,6 +31,19 @@ public class TextWriter: TextWriting {
       // a slower, empirically verified cadence while native apps stay fast.
       let bundleID = NSRunningApplication(processIdentifier: selection.pid)?.bundleIdentifier
       let profile = Self.typingProfile(bundleID: bundleID, settings: settings)
+
+      // Say so when the configured chunk size was normalized (finding C2): a
+      // corrected value must not be silently substituted, mirroring the
+      // retry-delay clamp pattern. typingProfile itself stays pure.
+      let configuredChunk =
+        bundleID.flatMap { settings.appTypingOverrides?[$0]?.typingChunkSize }
+        ?? settings.typingChunkSize
+      if let configuredChunk = configuredChunk, configuredChunk != profile.chunkSize {
+        Logger.shared.log(
+          "Configured typingChunkSize (\(configuredChunk)) is outside "
+            + "1...\(Self.maxChunkSizeUTF16); using \(profile.chunkSize).",
+          level: .warning)
+      }
       try writeViaCGEvent(
         text: text,
         profile: profile,
@@ -46,20 +59,47 @@ public class TextWriter: TextWriting {
     let delayMicroseconds: Int
   }
 
+  static let defaultChunkSize = 20
+  static let defaultDelayMicroseconds = 2000
+
+  /// Upper bound for the text carried by one synthetic keyboard event.
+  /// ASSUMPTION (Principle III): the practical cap for
+  /// `keyboardSetUnicodeString` is reported at around 20 UTF-16 units; the
+  /// diagnostic run recorded in docs/compatibility.md verifies the real value.
+  /// A chunk above the cap is silently truncated by the OS after the selection
+  /// was already deleted, which is the C2 data-loss path, so this clamp must
+  /// stay at or below the verified cap.
+  static let maxChunkSizeUTF16 = 20
+
   /// Resolves the typing cadence for the target app: a per-app override (matched by
   /// bundle id) wins field-by-field over the global defaults, which themselves fall
-  /// back to 20 units / 2000 microseconds. Pure logic, unit-tested.
+  /// back to 20 units / 2000 microseconds. A non-positive chunk size behaves like
+  /// the Settings field's 0 sentinel ("unset") instead of bypassing the fallback,
+  /// and the resolved chunk is clamped to the per-event cap (finding C2); a
+  /// negative delay is likewise treated as unset, while an explicit 0 stays valid
+  /// ("no delay"). Pure logic, unit-tested.
   static func typingProfile(bundleID: String?, settings: GeneralConfig) -> TypingProfile {
-    let globalChunk = settings.typingChunkSize ?? 20
-    let globalDelay = settings.typingDelayMicroseconds ?? 2000
+    let globalChunk = usableChunkSize(settings.typingChunkSize) ?? defaultChunkSize
+    let globalDelay = usableDelay(settings.typingDelayMicroseconds) ?? defaultDelayMicroseconds
 
     if let bundleID = bundleID, let override = settings.appTypingOverrides?[bundleID] {
       return TypingProfile(
-        chunkSize: override.typingChunkSize ?? globalChunk,
-        delayMicroseconds: override.typingDelayMicroseconds ?? globalDelay
+        chunkSize: min(usableChunkSize(override.typingChunkSize) ?? globalChunk, maxChunkSizeUTF16),
+        delayMicroseconds: usableDelay(override.typingDelayMicroseconds) ?? globalDelay
       )
     }
-    return TypingProfile(chunkSize: globalChunk, delayMicroseconds: globalDelay)
+    return TypingProfile(
+      chunkSize: min(globalChunk, maxChunkSizeUTF16), delayMicroseconds: globalDelay)
+  }
+
+  private static func usableChunkSize(_ value: Int?) -> Int? {
+    guard let value = value, value > 0 else { return nil }
+    return value
+  }
+
+  private static func usableDelay(_ value: Int?) -> Int? {
+    guard let value = value, value >= 0 else { return nil }
+    return value
   }
 
   /// Scales the base per-chunk delay by the speed multiplier. A non-positive
@@ -85,8 +125,11 @@ public class TextWriter: TextWriting {
     bundleID: String?,
     validateContext: () throws -> Void
   ) throws {
-    // According to our research, we must clear modifier keys before typing synthetic events
-    // so we don't accidentally send Cmd+A instead of 'a'.
+    // QUIRK WORKAROUND: a synthetic event source that inherits physically held
+    // modifiers turns typed characters into keyboard shortcuts (e.g. Cmd+A
+    // instead of 'a'), so we wait for the user to release ALL of them. Shift is
+    // included (finding H8): a Shift held from a ⌘⇧-style trigger is the same
+    // hazard class as Command.
 
     // Wait for the user to physically release modifiers (Cmd, Option, Control, Shift)
     let maxWaitAttempts = 12
@@ -99,7 +142,7 @@ public class TextWriter: TextWriting {
       let currentFlags = CGEventSource.flagsState(.hidSystemState)
       let isHoldingModifiers =
         currentFlags.contains(.maskCommand) || currentFlags.contains(.maskAlternate)
-        || currentFlags.contains(.maskControl)
+        || currentFlags.contains(.maskControl) || currentFlags.contains(.maskShift)
 
       if !isHoldingModifiers {
         break
@@ -143,6 +186,7 @@ public class TextWriter: TextWriting {
 
     let utf16Chars = Array(text.utf16)
     let totalChars = utf16Chars.count
+    let ranges = Self.chunkRanges(for: utf16Chars, chunkSize: chunkSize)
     var chunkCount = 0
     let startTime = Date()
 
@@ -151,7 +195,7 @@ public class TextWriter: TextWriting {
     // replacement in the document, which is worse than finishing. The cancellable
     // interception points are the modifier-release wait and the pre-write
     // re-validation, both before the first destructive keystroke.
-    for range in Self.chunkRanges(for: utf16Chars, chunkSize: chunkSize) {
+    for range in ranges {
       chunkCount += 1
       let chunkLength = range.count
       var chunk = Array(utf16Chars[range])
@@ -159,11 +203,23 @@ public class TextWriter: TextWriting {
       guard let eventDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
         let eventUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
       else {
-        continue
+        // Principle VI: after the destructive backspace there is no safe retry
+        // and no safe skip. Silently dropping this chunk would corrupt the
+        // replacement while the run still reports success (finding H3). Stop
+        // and surface the partial write as a typed error instead.
+        Logger.shared.log(
+          "CGEvent creation failed at chunk \(chunkCount) of \(ranges.count); aborting write.",
+          level: .error)
+        throw AXError.writeIncomplete
       }
 
       eventDown.keyboardSetUnicodeString(stringLength: chunkLength, unicodeString: &chunk)
       eventUp.keyboardSetUnicodeString(stringLength: chunkLength, unicodeString: &chunk)
+
+      // Explicitly cleared, matching postKey: a chunk event that inherits flags
+      // from any source state could deliver shortcuts instead of text (H8).
+      eventDown.flags = []
+      eventUp.flags = []
 
       eventDown.post(tap: .cghidEventTap)
       eventUp.post(tap: .cghidEventTap)
@@ -193,7 +249,10 @@ public class TextWriter: TextWriting {
   static func chunkRanges(for utf16: [UInt16], chunkSize: Int) -> [Range<Int>] {
     let total = utf16.count
     guard total > 0 else { return [] }
-    guard chunkSize > 0 else { return [0..<total] }
+    // Defense in depth behind typingProfile's normalization: one unbounded
+    // range would be silently truncated by the OS event cap (finding C2), so a
+    // non-positive size falls back to the default chunking instead.
+    guard chunkSize > 0 else { return chunkRanges(for: utf16, chunkSize: defaultChunkSize) }
 
     var ranges: [Range<Int>] = []
     var i = 0

@@ -63,15 +63,15 @@ integrity) and the event-cap diagnostic.
 
 ### Tests for User Story 2
 
-- [ ] T010 [P] [US2] Add failing clamp tests: chunk 0, negative, 21+, boundary 1 and 20, override and global paths, delay floor at 0, in Tests/OvertypeTests/TypingProfileTests.swift (C2)
+- [X] T010 [P] [US2] Add failing clamp tests: chunk 0, negative, 21+, boundary 1 and 20, override and global paths, delay floor at 0, in Tests/OvertypeTests/TypingProfileTests.swift (C2)
 
 ### Implementation for User Story 2
 
-- [ ] T011 [US2] Clamp resolved chunk size to `1...20` and delay to `>= 0` in `TextWriter.typingProfile`; defensive `chunkRanges` fallback to default-size chunks; `.warning` log at the call site when the clamp engages, in Sources/Overtype/Core/TextWriter.swift (C2)
-- [ ] T012 [US2] Set `minimum = 0` on the three cadence `NumberFormatter`s in Sources/Overtype/UI/Settings/GeneralTab.swift (C2)
-- [ ] T013 [US2] Add `AXError.writeIncomplete` (message: replacement may be incomplete) in Sources/Overtype/Support/AXHelpers.swift; throw it instead of `continue` on CGEvent creation failure, with an `.error` log carrying chunk index/count only, in Sources/Overtype/Core/TextWriter.swift (H3)
-- [ ] T014 [US2] Add `.maskShift` to the modifier-release wait; set `flags = []` on chunk eventDown/eventUp; update the quirk comment to match, in Sources/Overtype/Core/TextWriter.swift (H8)
-- [ ] T015 [US2] Checkpoint: `swift test` fully green; commit `fix(writer): bound chunks, surface partial writes, wait for Shift`
+- [X] T011 [US2] Clamp resolved chunk size to `1...20` and delay to `>= 0` in `TextWriter.typingProfile`; defensive `chunkRanges` fallback to default-size chunks; `.warning` log at the call site when the clamp engages, in Sources/Overtype/Core/TextWriter.swift (C2)
+- [X] T012 [US2] Set `minimum = 0` on the three cadence `NumberFormatter`s in Sources/Overtype/UI/Settings/GeneralTab.swift (C2)
+- [X] T013 [US2] Add `AXError.writeIncomplete` (message: replacement may be incomplete) in Sources/Overtype/Support/AXHelpers.swift; throw it instead of `continue` on CGEvent creation failure, with an `.error` log carrying chunk index/count only, in Sources/Overtype/Core/TextWriter.swift (H3)
+- [X] T014 [US2] Add `.maskShift` to the modifier-release wait; set `flags = []` on chunk eventDown/eventUp; update the quirk comment to match, in Sources/Overtype/Core/TextWriter.swift (H8)
+- [X] T015 [US2] Checkpoint: `swift test` fully green; commit `fix(writer): bound chunks, surface partial writes, wait for Shift`
 
 ---
 

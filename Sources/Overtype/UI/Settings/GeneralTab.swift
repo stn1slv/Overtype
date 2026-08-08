@@ -12,6 +12,15 @@ public struct GeneralTab: View {
   // information, so it must not become draft state or take part in saving.
   private let versionText = AppVersion.current.displayString
 
+  // Rejects negative cadence values at the field (finding C2). 0 stays allowed:
+  // it is the sentinel the bindings map to "unset". TextWriter additionally
+  // normalizes whatever reaches it, so hand-edited files are covered too.
+  private static let cadenceFormatter: NumberFormatter = {
+    let formatter = NumberFormatter()
+    formatter.minimum = 0
+    return formatter
+  }()
+
   public init(viewModel: SettingsViewModel) {
     self.viewModel = viewModel
   }
@@ -78,7 +87,7 @@ public struct GeneralTab: View {
               value: Binding(
                 get: { viewModel.global.typingChunkSize ?? 0 },
                 set: { viewModel.global.typingChunkSize = $0 == 0 ? nil : $0 }
-              ), formatter: NumberFormatter(), prompt: Text("Standard")
+              ), formatter: Self.cadenceFormatter, prompt: Text("Standard")
             )
             .labelsHidden()
             .frame(width: 100)
@@ -95,7 +104,7 @@ public struct GeneralTab: View {
               value: Binding(
                 get: { viewModel.global.typingDelayMicroseconds ?? 0 },
                 set: { viewModel.global.typingDelayMicroseconds = $0 == 0 ? nil : $0 }
-              ), formatter: NumberFormatter(), prompt: Text("Standard")
+              ), formatter: Self.cadenceFormatter, prompt: Text("Standard")
             )
             .labelsHidden()
             .frame(width: 100)
@@ -139,7 +148,7 @@ public struct GeneralTab: View {
               value: Binding(
                 get: { $draft.chunkSize.wrappedValue ?? 0 },
                 set: { $draft.chunkSize.wrappedValue = $0 == 0 ? nil : $0 }
-              ), formatter: NumberFormatter(), prompt: Text("Default")
+              ), formatter: Self.cadenceFormatter, prompt: Text("Default")
             )
             .labelsHidden()
             .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -150,7 +159,7 @@ public struct GeneralTab: View {
               value: Binding(
                 get: { $draft.delay.wrappedValue ?? 0 },
                 set: { $draft.delay.wrappedValue = $0 == 0 ? nil : $0 }
-              ), formatter: NumberFormatter(), prompt: Text("Default")
+              ), formatter: Self.cadenceFormatter, prompt: Text("Default")
             )
             .labelsHidden()
             .textFieldStyle(RoundedBorderTextFieldStyle())
