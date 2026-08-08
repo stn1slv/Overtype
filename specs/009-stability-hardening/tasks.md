@@ -127,16 +127,16 @@ sections 7 and 8.
 
 ### Tests for User Story 5
 
-- [ ] T028 [P] [US5] Add failing `OpenAICompatibleProviderTests`: endpoint URL building (trailing slash both ways), refusal, `finish_reason == "content_filter"`, null/missing content, empty content, reasoning-block strip, error-body extraction, per contracts/openai-response-handling.md, in Tests/OvertypeTests/OpenAICompatibleProviderTests.swift (H5)
-- [ ] T029 [P] [US5] Add failing threshold tests: trained windows 40960 and 131072 both yield truncation threshold 8192, in Tests/OvertypeTests/OllamaProviderTests.swift (H6)
+- [X] T028 [P] [US5] Add failing `OpenAICompatibleProviderTests`: endpoint URL building (trailing slash both ways), refusal, `finish_reason == "content_filter"`, null/missing content, empty content, reasoning-block strip, error-body extraction, per contracts/openai-response-handling.md, in Tests/OvertypeTests/OpenAICompatibleProviderTests.swift (H5)
+- [X] T029 [P] [US5] Add failing threshold tests: trained windows 40960 and 131072 both yield truncation threshold 8192, in Tests/OvertypeTests/OllamaProviderTests.swift (H6)
 
 ### Implementation for User Story 5
 
-- [ ] T030 [US5] Extract the leading-reasoning-block stripper into a shared pure helper in Sources/Overtype/Providers/ (new file); `OllamaProvider` delegates to it; all existing OllamaProviderTests stay green, in Sources/Overtype/Providers/OllamaProvider.swift (H5)
-- [ ] T031 [US5] Add `endpointURL`/`parseResponseText` seams; map refusal and content-filter to `.responseBlocked(reason:)` (short category), null/invalid to `.invalidResponse`, empty to `.emptyResponse`; strip reasoning on the happy path; Keychain catch distinguishes `itemNotFound` from other statuses with a `.warning` naming key and status only, in Sources/Overtype/Providers/OpenAICompatibleProvider.swift (H5)
-- [ ] T032 [US5] Clamp `grantedContextWindow` to `min(contextWindowTokens, reported)`; correct the comment to state both clamp directions, in Sources/Overtype/Providers/OllamaProvider.swift (H6)
-- [ ] T033 [US5] Switch to `os_log("%{public}@", ...)`; initialize `isDebugEnabled` from `UserDefaults` key `OvertypeDebugLogging`; log one `.warning` privacy notice when enabled, in Sources/Overtype/Support/Logger.swift; AND present a visible launch alert (existing alert path) when the flag is on, naming the privacy consequence and how to disable it, in Sources/Overtype/OvertypeApp.swift (H7, Principle V)
-- [ ] T034 [US5] Checkpoint: `swift test` fully green; commit `fix(providers): harden openai-compatible parsing, ollama window clamp, logging`
+- [X] T030 [US5] Extract the leading-reasoning-block stripper into a shared pure helper in Sources/Overtype/Providers/ (new file); `OllamaProvider` delegates to it; all existing OllamaProviderTests stay green, in Sources/Overtype/Providers/OllamaProvider.swift (H5)
+- [X] T031 [US5] Add `endpointURL`/`parseResponseText` seams; map refusal and content-filter to `.responseBlocked(reason:)` (short category), null/invalid to `.invalidResponse`, empty to `.emptyResponse`; strip reasoning on the happy path; Keychain catch distinguishes `itemNotFound` from other statuses with a `.warning` naming key and status only, in Sources/Overtype/Providers/OpenAICompatibleProvider.swift (H5)
+- [X] T032 [US5] Clamp `grantedContextWindow` to `min(contextWindowTokens, reported)`; correct the comment to state both clamp directions, in Sources/Overtype/Providers/OllamaProvider.swift (H6)
+- [X] T033 [US5] Switch to `os_log("%{public}@", ...)`; initialize `isDebugEnabled` from `UserDefaults` key `OvertypeDebugLogging`; log one `.warning` privacy notice when enabled, in Sources/Overtype/Support/Logger.swift; AND present a visible launch alert (existing alert path) when the flag is on, naming the privacy consequence and how to disable it, in Sources/Overtype/OvertypeApp.swift (H7, Principle V)
+- [X] T034 [US5] Checkpoint: `swift test` fully green; commit `fix(providers): harden openai-compatible parsing, ollama window clamp, logging`
 
 ---
 

@@ -2,6 +2,35 @@ import XCTest
 
 @testable import Overtype
 
+/// H6: the truncation threshold was computed from the TRAINED window, while the
+/// request pins num_ctx to 16384; for any model trained above twice the request
+/// the threshold sat above every possible prompt_eval_count and the guard was
+/// inert. The effective window is the smaller of the two.
+final class OllamaEffectiveWindowTests: XCTestCase {
+
+  func testEffectiveWindowClampsLargeTrainedWindows() {
+    XCTAssertEqual(OllamaProvider.effectiveWindow(reported: 40960), 16384)
+    XCTAssertEqual(OllamaProvider.effectiveWindow(reported: 131_072), 16384)
+  }
+
+  func testEffectiveWindowKeepsSmallTrainedWindows() {
+    XCTAssertEqual(OllamaProvider.effectiveWindow(reported: 2048), 2048)
+    XCTAssertEqual(OllamaProvider.effectiveWindow(reported: 16384), 16384)
+  }
+
+  func testTruncationThresholdReachableForLargeModels() {
+    // qwen3-class model trained at 40960: threshold must be half the EFFECTIVE
+    // window (8192), a value prompt_eval_count can actually report.
+    let threshold = OllamaProvider.truncationThreshold(
+      grantedWindow: OllamaProvider.effectiveWindow(reported: 40960))
+    XCTAssertEqual(threshold, 8192)
+
+    let hugeModel = OllamaProvider.truncationThreshold(
+      grantedWindow: OllamaProvider.effectiveWindow(reported: 131_072))
+    XCTAssertEqual(hugeModel, 8192)
+  }
+}
+
 /// Covers the pure logic of `OllamaProvider`: endpoint construction, request
 /// body shape, the pre-send size check, reasoning stripping, response parsing,
 /// error extraction, and transport-failure mapping.

@@ -83,6 +83,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       alert.runModal()
     }
 
+    // Principle V requires that enabling debug logging PRESENTS an explicit
+    // warning to the user; a log line alone is not presentation (finding H7,
+    // closing the corresponding Known Deviation in the constitution). With the
+    // flag on, selected text and model output reach the unified log.
+    if Logger.shared.isDebugEnabled {
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "Debug logging is enabled"
+      alert.informativeText =
+        "Selected text and AI output will appear in the system log while this stays on.\n\n"
+        + "Disable it with:\ndefaults delete com.github.stn1slv.Overtype "
+        + Logger.debugLoggingDefaultsKey
+      alert.alertStyle = .warning
+      alert.runModal()
+    }
+
     // Register hotkeys
     hotkeyManager.registerHotkeys(for: ConfigStore.shared.config.actions) { [weak self] action in
       self?.engine.run(action: action)
