@@ -82,7 +82,7 @@ Sources/Overtype/
 │   ├── HotkeyManager.swift        # C1 (skip invalid shortcuts with warning)
 │   └── TextWriter.swift           # C2 (cadence clamp), H3 (typed partial-write error), H8 (Shift + flags)
 ├── Providers/
-│   ├── AIProvider.swift           # H5 (shared reasoning-strip helper location)
+│   ├── ReasoningStripper.swift    # H5 (NEW: shared reasoning stripper; AIProvider.swift needed no change)
 │   ├── OpenAICompatibleProvider.swift  # H5 (parse seams, refusal/empty mapping, keychain logging)
 │   └── OllamaProvider.swift       # H5 (delegate to shared helper), H6 (effective-window clamp)
 ├── Security/
@@ -96,19 +96,20 @@ Sources/Overtype/
 │   │   ├── SettingsWindow.swift   # C5 (shared view model)
 │   │   ├── SettingsViewModel.swift # C6 (rollback), C7 (real reload + snapshot)
 │   │   ├── GeneralTab.swift       # C2 (formatter bounds)
-│   │   └── ActionsTab.swift       # C1 (handle invalid stored shortcut)
+│   │   └── ActionsTab.swift       # C1 (verified, no change needed: existing optional chaining already handles a nil keyboardShortcut)
 │   └── (FeedbackPresenter.swift unchanged)
 └── OvertypeApp.swift              # C5 (single shared draft), H4 (poll start on trust loss), C3 (notice surfacing)
 
 Tests/OvertypeTests/
 ├── AppConfigTests.swift           # C1, C3 additions (wrong-type + lossy decode)
 ├── TypingProfileTests.swift       # C2 additions (clamps)
-├── OpenAICompatibleProviderTests.swift  # NEW (H5)
-├── OllamaProviderTests.swift      # H5 (helper still covered), H6 additions
-├── ReasoningStripTests or reuse   # H5 (shared helper coverage stays green)
+├── OpenAICompatibleProviderTests.swift  # NEW (H5; also exercises the shared stripper)
+├── OllamaProviderTests.swift      # H5 (delegation keeps existing coverage green), H6 additions
+├── KeychainErrorTests.swift       # NEW (C4 error rendering)
 └── SettingsReloadTests.swift      # NEW (C7 decision logic)
 
 docs/compatibility.md              # Manual acceptance results (C2 cap, H1, H2, H4, H8, C4, C5)
+CLAUDE.md                          # Behavior documentation updates (task T036)
 ```
 
 **Structure Decision**: single SPM package, existing layout; no new targets or directories beyond test files.
@@ -230,8 +231,8 @@ Escape monitors on re-grant, exactly as the launch path does. No change to
 
 ### H5 - OpenAI-compatible provider hardening
 The reasoning-block stripper moves from `OllamaProvider` to a shared internal helper
-(`ResponseReasoningStripper` in Providers/, pure; `OllamaProvider` delegates so its 745
-lines of tests stay green). `OpenAICompatibleProvider` gains seams matching the other
+(`ReasoningStripper`, a new file in Providers/, pure; `OllamaProvider` delegates so its
+745 lines of tests stay green). `OpenAICompatibleProvider` gains seams matching the other
 providers: `endpointURL(base:)` and `parseResponseText(from:)` (static, pure). Parsing:
 `message.refusal` present or `finish_reason == "content_filter"` maps to
 `.responseBlocked(reason:)` using a short category, never the raw refusal text in logs;
@@ -269,3 +270,13 @@ scenarios for the verified apps (Outlook, Teams) before merge.
 ## Complexity Tracking
 
 No constitution violations to justify; table intentionally empty.
+
+### Revision: Implementation Sync 2026-08-08
+
+- Reason: reconciled three artifact-drift items after implementation. The shared
+  reasoning stripper landed as the new file `Providers/ReasoningStripper.swift`
+  (type `ReasoningStripper`), not inside `AIProvider.swift`; `ActionsTab.swift`
+  required no change for C1 (existing optional chaining suffices); `CLAUDE.md`
+  and `Tests/OvertypeTests/KeychainErrorTests.swift` were added to the
+  touch-point tree (both were already called for by tasks T036/T016). No code
+  changes; artifacts only.
