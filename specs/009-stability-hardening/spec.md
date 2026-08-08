@@ -11,6 +11,12 @@
 Traceability: every requirement below carries the finding id (C1-C7, H1-H8) from the
 review. The reviewed code state is commit `eda5ad2` on `main`.
 
+## Clarifications
+
+### Session 2026-08-08
+
+- Q: What should the hard timeout for the read phase (selection reading, including dormant-tree recovery) be? → A: 30 seconds (force-abort ceiling for an uncancelled run; Escape cancellation stays bounded at about 5 seconds per SC-002).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Malformed configuration never crashes or resets the app (Priority: P1)
@@ -156,7 +162,7 @@ threshold math against large-window models, and inspect live unified-log output.
 - **FR-005** (C5): All Settings surfaces MUST operate on one shared draft state, so a save from any window can never revert changes already saved from another.
 - **FR-006** (C6): After a failed settings save, the in-memory state MUST equal the persisted state (full rollback), for every mutator, matching the rollback already implemented for provider mutations.
 - **FR-007** (C7): Opening Settings with no unsaved edits MUST reflect the configuration file's current on-disk content, including edits made outside the app while it runs.
-- **FR-008** (H1): A run MUST be cancellable during the read phase within a bounded time even when the target application is unresponsive, and the read phase MUST be covered by a hard timeout (constitution Principle VI).
+- **FR-008** (H1): A run MUST be cancellable during the read phase within a bounded time even when the target application is unresponsive, and the read phase MUST be covered by a hard timeout of 30 seconds, after which the run ends with the typed timeout error (constitution Principle VI).
 - **FR-009** (H2): Accessibility recovery MUST NOT permanently alter process-wide accessibility behavior; any global adjustment made for recovery MUST be restored when recovery ends.
 - **FR-010** (H3): If any part of the replacement cannot be delivered after the destructive delete, the run MUST end with a specific error stating that the document may be partially replaced; it MUST NOT report success.
 - **FR-011** (H4): Accessibility trust MUST be evaluated at the start of every run; a missing permission MUST produce a permission-specific error, and Escape monitoring MUST recover automatically once the permission is restored, without relaunching.
@@ -177,7 +183,7 @@ threshold math against large-window models, and inspect live unified-log output.
 ### Measurable Outcomes
 
 - **SC-001**: The app launches successfully with 100% of the malformed-configuration fixture matrix (at minimum: negative shortcut modifiers, chunk size 0, wrong-typed boolean, invalid base URL string, unknown provider kind), and in each case every valid provider and action survives.
-- **SC-002**: With an unresponsive target application, pressing Escape during the read phase aborts the run in at most 5 seconds (today this can exceed a minute).
+- **SC-002**: With an unresponsive target application, pressing Escape during the read phase aborts the run in at most 5 seconds (today this can exceed a minute), and an uncancelled run force-aborts the read phase with the typed timeout error after at most 30 seconds.
 - **SC-003**: No code path reports success while the typed output is incomplete: every partial-delivery path ends in a visible, specific error.
 - **SC-004**: A credential-save failure never leaves the user without the previously working credential.
 - **SC-005**: The full existing unit-test suite (229 tests) keeps passing, and new tests cover each pure-logic fix (shortcut validation, cadence clamping, lossy configuration decoding, provider response parsing, truncation threshold).
