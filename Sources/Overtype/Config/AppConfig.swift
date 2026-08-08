@@ -1,6 +1,75 @@
 import AppKit
 import KeyboardShortcuts
 
+/// Collects notes about configuration values the tolerant decoder dropped or
+/// replaced with defaults, so the load can warn instead of failing or staying
+/// silent (finding C3; Principle VI). Reference type on purpose: decoders can
+/// only reach shared state through `Decoder.userInfo`, which carries values.
+/// Issue text names keys, ids, and indices only, never the offending values,
+/// because config.json holds user-authored prompts (Principle V).
+public final class ConfigDecodingIssues {
+  public private(set) var issues: [String] = []
+
+  public init() {}
+
+  public func record(_ issue: String) {
+    issues.append(issue)
+  }
+
+  /// `CodingUserInfoKey(rawValue:)` is failable in signature only (a non-empty
+  /// literal cannot fail); stored as optional to avoid a forbidden force unwrap.
+  static let userInfoKey = CodingUserInfoKey(rawValue: "overtypeConfigDecodingIssues")
+
+  public static func attach(_ issues: ConfigDecodingIssues, to decoder: JSONDecoder) {
+    guard let key = userInfoKey else { return }
+    decoder.userInfo[key] = issues
+  }
+
+  static func from(_ decoder: Decoder) -> ConfigDecodingIssues? {
+    guard let key = userInfoKey else { return nil }
+    return decoder.userInfo[key] as? ConfigDecodingIssues
+  }
+}
+
+/// Decodes a field that has a safe fallback: both absence and an unreadable
+/// (wrong-typed) value fall back to it, recording an issue in the latter case.
+/// Tolerance for fields with defaults is what keeps one hand-edited typo from
+/// costing the whole configuration (finding C3).
+func tolerantDecode<V: Decodable, K: CodingKey>(
+  _ container: KeyedDecodingContainer<K>, key: K, default fallback: V,
+  context: String, decoder: Decoder
+) -> V {
+  do {
+    return try container.decodeIfPresent(V.self, forKey: key) ?? fallback
+  } catch {
+    ConfigDecodingIssues.from(decoder)?.record(
+      "\(context).\(key.stringValue): unreadable value replaced by default")
+    return fallback
+  }
+}
+
+/// Wraps one array element so a broken element fails alone instead of failing
+/// the whole array (finding C3). Captures the element's `id` when readable so
+/// the load warning can name what was dropped.
+struct FailableConfigElement<T: Decodable>: Decodable {
+  let value: T?
+  let failedID: String?
+
+  private struct IDProbe: Decodable {
+    let id: String?
+  }
+
+  init(from decoder: Decoder) throws {
+    if let decoded = try? T(from: decoder) {
+      value = decoded
+      failedID = nil
+    } else {
+      value = nil
+      failedID = (try? IDProbe(from: decoder))?.id
+    }
+  }
+}
+
 /// The root configuration object loaded from config.json
 public struct AppConfig: Codable, Equatable {
   public var global: GeneralConfig
@@ -13,14 +82,32 @@ public struct AppConfig: Codable, Equatable {
     self.actions = actions
   }
 
-  // Tolerant decoding: a hand-edited config.json that omits a section must not
-  // fail the whole decode, because ConfigStore would then fall back to the
-  // default config and the next save would overwrite the user's file.
+  // Tolerant decoding: a hand-edited config.json that omits a section, holds a
+  // wrong-typed value, or contains one broken provider/action must not fail the
+  // whole decode, because ConfigStore would then fall back to the default
+  // config and the next save would overwrite the user's file (finding C3).
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    global = try container.decodeIfPresent(GeneralConfig.self, forKey: .global) ?? GeneralConfig()
-    providers = try container.decodeIfPresent([ProviderConfig].self, forKey: .providers) ?? []
-    actions = try container.decodeIfPresent([ActionConfig].self, forKey: .actions) ?? []
+    let issues = ConfigDecodingIssues.from(decoder)
+
+    global = tolerantDecode(
+      container, key: .global, default: GeneralConfig(), context: "config", decoder: decoder)
+
+    let providerElements = tolerantDecode(
+      container, key: .providers, default: [FailableConfigElement<ProviderConfig>](),
+      context: "config", decoder: decoder)
+    providers = providerElements.compactMap { $0.value }
+    for (index, element) in providerElements.enumerated() where element.value == nil {
+      issues?.record("providers[\(element.failedID ?? String(index))]: unreadable entry dropped")
+    }
+
+    let actionElements = tolerantDecode(
+      container, key: .actions, default: [FailableConfigElement<ActionConfig>](),
+      context: "config", decoder: decoder)
+    actions = actionElements.compactMap { $0.value }
+    for (index, element) in actionElements.enumerated() where element.value == nil {
+      issues?.record("actions[\(element.failedID ?? String(index))]: unreadable entry dropped")
+    }
   }
 }
 
@@ -45,18 +132,23 @@ public struct GeneralConfig: Codable, Equatable {
     self.appTypingOverrides = appTypingOverrides
   }
 
-  // Tolerant decoding: fields with a natural default fall back to it instead of
-  // failing the decode of the whole config (see AppConfig.init(from:)).
+  // Tolerant decoding: fields with a natural default fall back to it on absence
+  // AND on a wrong-typed value instead of failing the decode of the whole
+  // config (see AppConfig.init(from:); finding C3).
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    typingSpeedMultiplier =
-      try container.decodeIfPresent(Double.self, forKey: .typingSpeedMultiplier) ?? 1.0
-    showHUD = try container.decodeIfPresent(Bool.self, forKey: .showHUD) ?? true
-    typingChunkSize = try container.decodeIfPresent(Int.self, forKey: .typingChunkSize)
-    typingDelayMicroseconds = try container.decodeIfPresent(
-      Int.self, forKey: .typingDelayMicroseconds)
-    appTypingOverrides = try container.decodeIfPresent(
-      [String: AppTypingOverride].self, forKey: .appTypingOverrides)
+    typingSpeedMultiplier = tolerantDecode(
+      container, key: .typingSpeedMultiplier, default: 1.0, context: "global", decoder: decoder)
+    showHUD = tolerantDecode(
+      container, key: .showHUD, default: true, context: "global", decoder: decoder)
+    typingChunkSize = tolerantDecode(
+      container, key: .typingChunkSize, default: Int?.none, context: "global", decoder: decoder)
+    typingDelayMicroseconds = tolerantDecode(
+      container, key: .typingDelayMicroseconds, default: Int?.none, context: "global",
+      decoder: decoder)
+    appTypingOverrides = tolerantDecode(
+      container, key: .appTypingOverrides, default: [String: AppTypingOverride]?.none,
+      context: "global", decoder: decoder)
   }
 }
 
@@ -113,20 +205,44 @@ public struct ProviderConfig: Codable, Equatable {
   }
 
   // Tolerant decoding: `id`, `kind`, and `defaultModel` stay required (a provider
-  // without them is unusable); everything else has a safe default.
+  // without them is unusable; a failure here drops only this element, see
+  // FailableConfigElement); everything else has a safe fallback.
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
     kind = try container.decode(ProviderKind.self, forKey: .kind)
-    baseURL = try container.decodeIfPresent(URL.self, forKey: .baseURL)
     defaultModel = try container.decode(String.self, forKey: .defaultModel)
-    timeoutSeconds = try container.decodeIfPresent(Double.self, forKey: .timeoutSeconds) ?? 30.0
+
+    // baseURL is decoded as a string and parsed here: letting URL's own
+    // Decodable throw on a hand-edited value would abort the whole decode
+    // (finding C3). An unparseable value degrades to nil and the provider
+    // fails later with the existing typed URL error.
+    let urlString = tolerantDecode(
+      container, key: .baseURL, default: String?.none, context: "provider '\(id)'",
+      decoder: decoder)
+    if let urlString = urlString {
+      if let parsed = URL(string: urlString), parsed.scheme != nil {
+        baseURL = parsed
+      } else {
+        ConfigDecodingIssues.from(decoder)?.record(
+          "provider '\(id)'.baseURL: not a valid URL; ignored")
+        baseURL = nil
+      }
+    } else {
+      baseURL = nil
+    }
+
+    timeoutSeconds = tolerantDecode(
+      container, key: .timeoutSeconds, default: 30.0, context: "provider '\(id)'",
+      decoder: decoder)
     // Absent in configs written before the retry feature; those keep the 0.5s
     // default rather than failing to decode.
-    retryDelaySeconds =
-      try container.decodeIfPresent(Double.self, forKey: .retryDelaySeconds)
-      ?? ProviderConfig.defaultRetryDelaySeconds
-    keychainKey = try container.decodeIfPresent(String.self, forKey: .keychainKey)
+    retryDelaySeconds = tolerantDecode(
+      container, key: .retryDelaySeconds, default: ProviderConfig.defaultRetryDelaySeconds,
+      context: "provider '\(id)'", decoder: decoder)
+    keychainKey = tolerantDecode(
+      container, key: .keychainKey, default: String?.none, context: "provider '\(id)'",
+      decoder: decoder)
   }
 }
 
@@ -145,8 +261,25 @@ public struct ActionShortcut: Codable, Equatable {
     self.displayString = displayString
   }
 
-  public var keyboardShortcut: KeyboardShortcuts.Shortcut {
-    KeyboardShortcuts.Shortcut(
+  // Tolerant decoding: `displayString` is cosmetic, so its absence must not
+  // drop the whole action (finding C3). `keyCode`/`modifiers` stay required;
+  // a wrong type here fails only the shortcut, which the action-level decode
+  // degrades to "no shortcut" with a recorded issue.
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    keyCode = try container.decode(Int.self, forKey: .keyCode)
+    modifiers = try container.decode(Int.self, forKey: .modifiers)
+    displayString = try container.decodeIfPresent(String.self, forKey: .displayString) ?? ""
+  }
+
+  /// Nil when the stored values cannot form a valid shortcut. config.json is a
+  /// documented hand-editing surface, and `UInt(_:)` traps on a negative Int,
+  /// which turned a bad `modifiers` value into a crash at every launch, before
+  /// the status item existed, with no in-app recovery (finding C1). Callers
+  /// must skip a nil shortcut and warn instead of registering it.
+  public var keyboardShortcut: KeyboardShortcuts.Shortcut? {
+    guard keyCode >= 0, modifiers >= 0 else { return nil }
+    return KeyboardShortcuts.Shortcut(
       KeyboardShortcuts.Key(rawValue: keyCode),
       modifiers: NSEvent.ModifierFlags(rawValue: UInt(modifiers))
     )
@@ -191,23 +324,33 @@ public struct ActionConfig: Codable, Equatable {
   }
 
   // Tolerant decoding: identity, provider reference, and the prompts stay
-  // required (an action without them is unusable); everything else has a safe
-  // default matching the memberwise initializer.
+  // required (an action without them is unusable; a failure there drops only
+  // this element, see FailableConfigElement); everything else falls back on
+  // absence and on a wrong-typed value alike (finding C3).
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
     title = try container.decode(String.self, forKey: .title)
-    enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-    shortcut = try container.decodeIfPresent(ActionShortcut.self, forKey: .shortcut)
     providerID = try container.decode(String.self, forKey: .providerID)
-    model = try container.decodeIfPresent(String.self, forKey: .model)
     systemPrompt = try container.decode(String.self, forKey: .systemPrompt)
     userPromptTemplate = try container.decode(String.self, forKey: .userPromptTemplate)
-    temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 0.0
-    maxInputCharacters =
-      try container.decodeIfPresent(Int.self, forKey: .maxInputCharacters) ?? 5000
-    allowNewlines = try container.decodeIfPresent(Bool.self, forKey: .allowNewlines) ?? false
-    writeStrategy =
-      try container.decodeIfPresent(WriteStrategy.self, forKey: .writeStrategy) ?? .typing
+
+    enabled = tolerantDecode(
+      container, key: .enabled, default: true, context: "action '\(id)'", decoder: decoder)
+    shortcut = tolerantDecode(
+      container, key: .shortcut, default: ActionShortcut?.none, context: "action '\(id)'",
+      decoder: decoder)
+    model = tolerantDecode(
+      container, key: .model, default: String?.none, context: "action '\(id)'", decoder: decoder)
+    temperature = tolerantDecode(
+      container, key: .temperature, default: 0.0, context: "action '\(id)'", decoder: decoder)
+    maxInputCharacters = tolerantDecode(
+      container, key: .maxInputCharacters, default: 5000, context: "action '\(id)'",
+      decoder: decoder)
+    allowNewlines = tolerantDecode(
+      container, key: .allowNewlines, default: false, context: "action '\(id)'", decoder: decoder)
+    writeStrategy = tolerantDecode(
+      container, key: .writeStrategy, default: .typing, context: "action '\(id)'",
+      decoder: decoder)
   }
 }

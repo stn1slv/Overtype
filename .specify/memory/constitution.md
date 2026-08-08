@@ -237,21 +237,22 @@ the code against this document.
   Downloaded releases will therefore trip Gatekeeper. This must be closed before
   any distribution beyond a personal tap.
 
-- **Missing unit tests (Principle VIII).** No tests cover configuration
-  migration or shortcut encoding, though both are named as required. The
-  `ActionShortcut` encoding in `Config/AppConfig.swift` is non-trivial and
-  currently untested. `Tests/OvertypeTests/PromptTemplateTests.swift` asserts an
+- **Missing unit tests (Principle VIII).** PARTIALLY CLOSED 2026-08-08 by
+  specs/009-stability-hardening: the `ActionShortcut` encoding and the
+  configuration decode tolerance are now unit-tested (`AppConfigTests`).
+  Still open: `Tests/OvertypeTests/PromptTemplateTests.swift` asserts an
   inline string operation rather than the production templating code, so prompt
-  templating is effectively untested as well.
+  templating remains effectively untested.
 
 - **Uncommented Core Foundation casts (Principle VII).** The `as! AXUIElement`
   casts in `Support/AXHelpers.swift` are of the permitted kind, but they lack the
   per-site explanatory comment that Principle VII mandates.
 
-- **No user warning for debug logging (Principle V).** Enabling debug logging
-  raises the log level for selected text and model output, but the user is not
-  shown the required explicit warning. Only a code comment in
-  `Support/Logger.swift` notes the concern.
+- **No user warning for debug logging (Principle V).** CLOSED 2026-08-08 by
+  specs/009-stability-hardening (H7): the debug mode is now reachable via the
+  `OvertypeDebugLogging` user default, and enabling it both logs a warning and
+  presents a visible launch alert naming the privacy consequence and how to
+  turn it off.
 
 - **Stale packaged config sample.** `Support/Overtype/config.json` no longer
   matches the `Codable` model (it uses `type` instead of `kind` and omits
@@ -294,8 +295,13 @@ checklist above, and before each release through the manual acceptance
 procedure. Any deviation found MUST be either corrected or recorded as an
 explicit, dated exception in the plan that introduced it.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-08-01
+**Version**: 1.1.1 | **Ratified**: 2026-07-31 | **Last Amended**: 2026-08-08
 
 *Amendment 1.1.0 (2026-08-01): added the "Known Deviations" section recording
 current gaps between the code and this document, following a full audit. No
 principle was changed or weakened.*
+
+*Amendment 1.1.1 (2026-08-08): recorded the closure of the debug-logging
+warning deviation and the partial closure of the missing-unit-tests deviation,
+both delivered by specs/009-stability-hardening. Factual record update only;
+no principle was changed or weakened.*

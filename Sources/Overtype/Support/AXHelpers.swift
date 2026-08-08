@@ -8,6 +8,9 @@ public enum AXError: Error, LocalizedError {
   case cannotReadSelectedText
   case cannotWriteSelectedText
   case modifiersHeldTooLong
+  case writeIncomplete
+  case readTimedOut(appName: String?)
+  case accessibilityPermissionRevoked
 
   public var errorDescription: String? {
     switch self {
@@ -20,7 +23,16 @@ public enum AXError: Error, LocalizedError {
       return "Cannot write text. The application might not support Accessibility API."
     case .modifiersHeldTooLong:
       return
-        "Modifier keys were held too long. Release Cmd/Option/Control and try again. Nothing was changed."
+        "Modifier keys were held too long. Release Cmd/Option/Control/Shift and try again. Nothing was changed."
+    case .writeIncomplete:
+      return
+        "Writing was interrupted; the replacement may be incomplete. Use Undo (Cmd+Z) in the target application to restore the original text."
+    case .readTimedOut(let appName):
+      return
+        "\(appName ?? "The target application") did not respond while reading the selection. Nothing was changed."
+    case .accessibilityPermissionRevoked:
+      return
+        "Accessibility permission is missing. Grant it to Overtype in System Settings > Privacy & Security > Accessibility, then try again."
     }
   }
 }
@@ -36,6 +48,21 @@ public class AXHelpers {
   private static let recoveryAttempts = 24
   private static let recoveryIntervalSeconds: TimeInterval = 0.15
   private static let recoveryMessagingTimeoutSeconds: Float = 2.0
+
+  /// Bounds every AX call made inside `body` to the 2 s messaging timeout, and
+  /// restores the system default on exit (findings H1/H2). Setting the timeout
+  /// on the SYSTEM-WIDE element sets the process-wide default, which is exactly
+  /// what makes it cover strategy 1's system-wide query and every element the
+  /// DFS visits, and exactly why it must be scoped: the old recovery set it
+  /// permanently, silently changing AX behavior for every later run and making
+  /// the per-app findings in docs/compatibility.md order-dependent. Per the AX
+  /// contract, a timeout of 0 restores the global default.
+  static func withBoundedAXMessaging<T>(_ body: () throws -> T) rethrows -> T {
+    let systemWideElement = AXUIElementCreateSystemWide()
+    AXUIElementSetMessagingTimeout(systemWideElement, recoveryMessagingTimeoutSeconds)
+    defer { AXUIElementSetMessagingTimeout(systemWideElement, 0) }
+    return try body()
+  }
 
   /// - Parameter wakeDormantTree: when true and no strategy finds any element,
   ///   escalate once: set the assistive-client wake flags on the target app and
@@ -57,6 +84,11 @@ public class AXHelpers {
     // fall back to it so the user still gets a specific "cannot read" error.
     var fallbackCandidate: AXUIElement?
 
+    // Escape must stay responsive between every strategy (finding H1): each AX
+    // call below blocks synchronously against the target process, so these are
+    // the only opportunities cancellation has during the lookup.
+    try Task.checkCancellation()
+
     // 1. Try System-Wide Focused Element
     let systemWideElement = AXUIElementCreateSystemWide()
     var focusedElementValue: CFTypeRef?
@@ -73,6 +105,7 @@ public class AXHelpers {
     }
 
     // 2. Try App-Level Focused Element
+    try Task.checkCancellation()
     error = AXUIElementCopyAttributeValue(
       appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementValue)
 
@@ -82,6 +115,7 @@ public class AXHelpers {
     }
 
     // 3. Try the focused window
+    try Task.checkCancellation()
     var focusedWindowValue: CFTypeRef?
     if AXUIElementCopyAttributeValue(
       appElement, kAXFocusedWindowAttribute as CFString, &focusedWindowValue) == .success,
@@ -96,6 +130,7 @@ public class AXHelpers {
     }
 
     // 4. Try the main window
+    try Task.checkCancellation()
     var mainWindowValue: CFTypeRef?
     if AXUIElementCopyAttributeValue(
       appElement, kAXMainWindowAttribute as CFString, &mainWindowValue) == .success,
@@ -115,13 +150,13 @@ public class AXHelpers {
     // We recursively crawl the accessibility tree to find the element that has active selection.
     var visitedCount = 0
     if let window = asElement(focusedWindowValue) {
-      if let found = findActiveTextElement(in: window, visitedCount: &visitedCount) {
+      if let found = try findActiveTextElement(in: window, visitedCount: &visitedCount) {
         return found
       }
     }
 
     if let window = asElement(mainWindowValue) {
-      if let found = findActiveTextElement(in: window, visitedCount: &visitedCount) {
+      if let found = try findActiveTextElement(in: window, visitedCount: &visitedCount) {
         return found
       }
     }
@@ -180,11 +215,12 @@ public class AXHelpers {
   private static func retryFocusLookup(
     appElement: AXUIElement, targetPid: pid_t
   ) throws -> AXUIElement? {
-    // Bound every query against a hung or still-initializing AX server so the
-    // whole recovery stays within the run's hard timeout.
+    // Per-element bound for the app element (harmless, dies with the handle).
+    // The former SYSTEM-WIDE timeout set here was process-global and never
+    // restored (finding H2); the scoped bound now comes from
+    // withBoundedAXMessaging around the whole read phase.
     AXUIElementSetMessagingTimeout(appElement, recoveryMessagingTimeoutSeconds)
     let systemWideElement = AXUIElementCreateSystemWide()
-    AXUIElementSetMessagingTimeout(systemWideElement, recoveryMessagingTimeoutSeconds)
 
     var candidate: AXUIElement?
     for attempt in 1...recoveryAttempts {
@@ -249,10 +285,14 @@ public class AXHelpers {
 
   private static func findActiveTextElement(
     in element: AXUIElement, depth: Int = 0, visitedCount: inout Int
-  ) -> AXUIElement? {
+  ) throws -> AXUIElement? {
     if depth > 10 { return nil }  // Prevent excessive recursion depth
     visitedCount += 1
     if visitedCount > 200 { return nil }  // Protect against UI hangs in extremely complex AX trees
+
+    // Every node visit is 1-2 blocking AX calls against the target; without a
+    // per-node check, Escape stays dead for the whole crawl (finding H1).
+    try Task.checkCancellation()
 
     var selectedTextValue: CFTypeRef?
     if AXUIElementCopyAttributeValue(
@@ -268,7 +308,7 @@ public class AXHelpers {
       let children = childrenValue as? [AXUIElement]
     {
       for child in children {
-        if let found = findActiveTextElement(
+        if let found = try findActiveTextElement(
           in: child, depth: depth + 1, visitedCount: &visitedCount)
         {
           return found

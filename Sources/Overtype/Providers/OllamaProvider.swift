@@ -143,15 +143,17 @@ public class OllamaProvider: AIProvider {
   /// becomes reachable.
   static let assumedWindowWhenUnknown = 4096
 
-  /// Effective context window per model, as reported by the service.
+  /// Effective context window per model: the smaller of the trained maximum
+  /// the service reports and the `num_ctx` we request (finding H6).
   ///
-  /// `contextWindowTokens` is what we ASK for; it is not necessarily what we
-  /// get. Ollama clamps `num_ctx` down to a model's own trained maximum, so a
-  /// model built at 4096 silently runs at 4096 no matter what we send — and a
-  /// truncation check written against the requested value would then never fire
-  /// for exactly the models most likely to truncate. Looked up once per model
-  /// and cached; the lock is here because `ProviderRegistry` hands the same
-  /// instance to every run.
+  /// The clamp runs in BOTH directions. Ollama clamps `num_ctx` down to a
+  /// model's own trained maximum, so a model built at 4096 silently runs at
+  /// 4096 no matter what we send — and a truncation check written against the
+  /// requested value would then never fire for exactly the models most likely
+  /// to truncate. Conversely, a model trained far above `num_ctx` runs at what
+  /// we requested, so a check written against the trained value would never
+  /// fire at all. Looked up once per model and cached; the lock is here
+  /// because `ProviderRegistry` hands the same instance to every run.
   private var effectiveWindowCache: [String: Int] = [:]
   private let cacheLock = NSLock()
 
@@ -288,10 +290,25 @@ public class OllamaProvider: AIProvider {
       return nil
     }
 
+    // The effective window is the SMALLER of the trained maximum and the
+    // requested `num_ctx` (finding H6): the service clamps our request down to
+    // the trained maximum, but it also never grants more than we request. The
+    // previous unclamped value made `truncationThreshold` (trained/2) sit above
+    // any possible `prompt_eval_count` for models trained past twice the
+    // request, so the truncation guard could never fire exactly where prompts
+    // are biggest.
+    let effective = Self.effectiveWindow(reported: window)
+
     cacheLock.lock()
-    effectiveWindowCache[model] = window
+    effectiveWindowCache[model] = effective
     cacheLock.unlock()
-    return window
+    return effective
+  }
+
+  /// `min(contextWindowTokens, reported)`. Pure seam for the clamp above,
+  /// unit-tested (finding H6).
+  static func effectiveWindow(reported: Int) -> Int {
+    min(contextWindowTokens, reported)
   }
 
   /// Upper bound on the window lookup, independent of the provider timeout.
@@ -554,29 +571,11 @@ public class OllamaProvider: AIProvider {
   /// one in the user's document, which is the exact failure this guards
   /// against. The loop terminates because each pass removes a non-empty prefix.
   static func stripLeadingReasoningBlock(_ text: String) -> String {
-    var current = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-    var strippedOne = true
-    while strippedOne {
-      strippedOne = false
-
-      for tag in ["think", "thinking"] {
-        let open = "<\(tag)>"
-        let close = "</\(tag)>"
-        guard current.lowercased().hasPrefix(open) else { continue }
-
-        guard let closeRange = current.range(of: close, options: .caseInsensitive) else {
-          // Unterminated: everything that follows is reasoning.
-          return ""
-        }
-        current = String(current[closeRange.upperBound...])
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        strippedOne = true
-        break
-      }
-    }
-
-    return stripOrphanReasoningPrefix(current)
+    // Logic (and its documented trade-offs) moved to the shared
+    // ReasoningStripper in feature 009 (finding H5), so the OpenAI-compatible
+    // provider strips identically; this wrapper keeps the provider's API and
+    // its tests stable.
+    ReasoningStripper.stripLeadingBlock(text)
   }
 
   /// Removes reasoning that has a CLOSING marker but no opening one.
@@ -603,24 +602,9 @@ public class OllamaProvider: AIProvider {
   /// into a document, because reasoning leakage is silent and unbounded while
   /// this is visible in the result.
   static func stripOrphanReasoningPrefix(_ text: String) -> String {
-    for tag in ["think", "thinking"] {
-      let open = "<\(tag)>"
-      let close = "</\(tag)>"
-
-      guard let closeRange = text.range(of: close, options: .caseInsensitive) else { continue }
-
-      // A matched pair is not the orphan shape; leave it to the caller's rules.
-      if let openRange = text.range(of: open, options: .caseInsensitive),
-        openRange.lowerBound < closeRange.lowerBound
-      {
-        continue
-      }
-
-      return String(text[closeRange.upperBound...])
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    return text
+    // See ReasoningStripper.stripOrphanPrefix for the DeepSeek-R1 rationale and
+    // the ACCEPTED TRADEOFF note (moved there in feature 009, finding H5).
+    ReasoningStripper.stripOrphanPrefix(text)
   }
 
   /// Best-effort extraction of Ollama's `{ "error": "<string>" }` body.

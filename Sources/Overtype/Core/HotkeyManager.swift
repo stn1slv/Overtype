@@ -18,8 +18,19 @@ public class HotkeyManager: HotkeyManaging {
     for action in actions where action.enabled {
       guard let shortcutDef = action.shortcut else { continue }
 
+      // A hand-edited shortcut with out-of-range values yields nil; skipping it
+      // with a warning keeps the app launching instead of trapping (finding C1).
+      guard let keyboardShortcut = shortcutDef.keyboardShortcut else {
+        Logger.shared.log(
+          "Action '\(action.title)' has an invalid stored shortcut "
+            + "(keyCode \(shortcutDef.keyCode), modifiers \(shortcutDef.modifiers)); "
+            + "hotkey not registered. Re-record it in Settings > Actions.",
+          level: .warning)
+        continue
+      }
+
       let name = KeyboardShortcuts.Name(action.id)
-      KeyboardShortcuts.setShortcut(shortcutDef.keyboardShortcut, for: name)
+      KeyboardShortcuts.setShortcut(keyboardShortcut, for: name)
 
       KeyboardShortcuts.onKeyDown(for: name) {
         Logger.shared.log("Shortcut triggered for action: \(action.title)", level: .info)

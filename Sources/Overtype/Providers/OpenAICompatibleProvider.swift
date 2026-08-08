@@ -16,11 +16,7 @@ public class OpenAICompatibleProvider: AIProvider {
   }
 
   public func transform(_ request: TransformRequest) async throws -> String {
-    guard let baseURL = config.baseURL else {
-      throw ProviderError.invalidURL
-    }
-
-    let url = baseURL.appendingPathComponent("chat/completions")
+    let url = try Self.endpointURL(base: config.baseURL)
     var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = "POST"
     urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -36,7 +32,20 @@ public class OpenAICompatibleProvider: AIProvider {
         throw ProviderError.apiKeyMissing
       }
       urlRequest.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+    } catch KeychainError.itemNotFound {
+      throw ProviderError.apiKeyMissing
+    } catch let error as ProviderError {
+      throw error
     } catch {
+      // A locked keychain or a denied ACL is not a missing key (finding H5).
+      // The HUD still shows the missing-key message (the fix lives in the same
+      // place either way), but the log names the real failure so the user is
+      // not sent to re-enter a key that is stored fine. Key name and status
+      // only, never a value (mirrors OllamaProvider.authorizationHeader).
+      Logger.shared.log(
+        "Keychain read failed for \"\(keychainKey)\"; treating as missing API key "
+          + "(\(error.localizedDescription))",
+        level: .warning)
       throw ProviderError.apiKeyMissing
     }
 
@@ -76,16 +85,66 @@ public class OpenAICompatibleProvider: AIProvider {
         message: Self.extractErrorMessage(from: data))
     }
 
+    return try Self.parseResponseText(from: data)
+  }
+
+  /// Builds `<base>/chat/completions`. The `openai` kind has no default base
+  /// URL on purpose (unlike Gemini/Anthropic/Ollama): "OpenAI-compatible"
+  /// names a protocol, not a host, so a nil base is a configuration error.
+  static func endpointURL(base: URL?) throws -> URL {
+    guard let base = base else {
+      throw ProviderError.invalidURL
+    }
+    return base.appendingPathComponent("chat/completions")
+  }
+
+  /// Pure parsing + failure mapping for a 200 chat-completions body (finding
+  /// H5). Unit-tested; contract:
+  /// specs/009-stability-hardening/contracts/openai-response-handling.md.
+  static func parseResponseText(from data: Data) throws -> String {
     guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       let choices = json["choices"] as? [[String: Any]],
       let firstChoice = choices.first,
-      let message = firstChoice["message"] as? [String: Any],
-      let content = message["content"] as? String
+      let message = firstChoice["message"] as? [String: Any]
     else {
       throw ProviderError.invalidResponse
     }
 
-    return content
+    // A refusal arrives as `message.refusal` alongside null content, and
+    // filtered output as `finish_reason == "content_filter"`. Both map to the
+    // typed blocked error with a short category, never the server's refusal
+    // text: that text is server-authored and can echo the submitted prompt
+    // (Principle V). Before this, a refusal degraded to the generic
+    // "invalid response" and content-filter stops looked like normal output.
+    if let refusal = message["refusal"] as? String, !refusal.isEmpty {
+      throw ProviderError.responseBlocked(reason: "refusal")
+    }
+    let finishReason = firstChoice["finish_reason"] as? String
+    if finishReason == "content_filter" {
+      throw ProviderError.responseBlocked(reason: "content filter")
+    }
+    // "length" means the output hit a token limit and the tail is missing;
+    // returning it as success would write a truncated replacement over the
+    // user's selection (009 review follow-up: the same silent-truncation class
+    // H6 closes for Ollama prompts, on the output side).
+    if finishReason == "length" {
+      throw ProviderError.outputTruncated
+    }
+
+    guard let content = message["content"] as? String else {
+      throw ProviderError.invalidResponse
+    }
+
+    // The `openai` kind points at arbitrary servers (LM Studio, vLLM,
+    // DeepSeek-style deployments) whose models can inline reasoning markers in
+    // `content` (finding H5); the shared stripper removes a leading block
+    // exactly as the Ollama provider does. An empty or whitespace-only result
+    // is the typed emptyResponse, not a success.
+    let text = ReasoningStripper.stripLeadingBlock(content)
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw ProviderError.emptyResponse
+    }
+    return text
   }
 
   /// Best-effort extraction of an OpenAI-style `{ "error": { "message": ... } }`

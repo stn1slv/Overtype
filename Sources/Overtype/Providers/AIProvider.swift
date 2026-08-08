@@ -48,6 +48,11 @@ public enum ProviderError: Error, LocalizedError {
   /// provider may already have asked the service about the model's window,
   /// which carries no user text.
   case inputTooLargeForContext(limit: Int)
+  /// The provider cut its response short (e.g. `finish_reason == "length"`), so
+  /// the tail of the replacement is missing. Writing it anyway would silently
+  /// lose the end of the user's text, the same truncation class the Ollama
+  /// prompt guard closes on the input side (009 review follow-up to H5).
+  case outputTruncated
 
   public var errorDescription: String? {
     switch self {
@@ -92,6 +97,10 @@ public enum ProviderError: Error, LocalizedError {
         "The selection is too large for this provider (limit \(limit) bytes, "
         + "including the action's prompt; non-Latin text costs more than one "
         + "byte per character). Select less text and try again. Nothing was changed."
+    case .outputTruncated:
+      return
+        "The AI provider cut its response short, so the replacement would be "
+        + "incomplete. Select less text and try again. Nothing was changed."
     }
   }
 
@@ -147,7 +156,9 @@ public enum ProviderError: Error, LocalizedError {
       if statusCode == 408 || statusCode == 429 { return true }
       return (500...599).contains(statusCode) && statusCode != 501
     case .apiKeyMissing, .invalidURL, .invalidResponse, .cancelled, .contextChanged,
-      .responseBlocked, .emptyResponse:
+      .responseBlocked, .emptyResponse, .outputTruncated:
+      // .outputTruncated: the same request produces the same token limit, so a
+      // retry truncates identically and only delays the error.
       return false
     case .serviceUnreachable, .modelNotAvailable, .inputTooLargeForContext:
       // All three are permanent by construction. A service that is not running
@@ -196,6 +207,8 @@ public enum ProviderError: Error, LocalizedError {
       return "model not available"
     case .inputTooLargeForContext:
       return "input too large for context"
+    case .outputTruncated:
+      return "output truncated"
     }
   }
 

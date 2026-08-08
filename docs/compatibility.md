@@ -28,6 +28,28 @@ Manual acceptance for this feature (`specs/005-teams-ax-recovery/quickstart.md`)
 | D. Nothing selected fails fast; Escape cancels recovery | Same errors; cancel < 1 s | pending |
 | E. Regression sweep (Outlook, native, VS Code) | Matches existing entries | pending |
 
+### Stability hardening acceptance (specs/009-stability-hardening)
+
+Manual acceptance for feature 009 (`specs/009-stability-hardening/quickstart.md`).
+Record results per scenario before the next release; the release must not ship
+with any item regressed (constitution VIII).
+
+| Scenario | Expected | Result |
+|----------|----------|--------|
+| 1. Malformed-config launch matrix (negative shortcut modifiers, chunk 0, wrong-typed boolean, invalid baseURL, unknown provider kind) | App launches every time; valid providers/actions survive; one warning alert names what was ignored | pending |
+| 2. Synthetic-event cap diagnostic (30+ UTF-16 units in one event; surrogate pair at position 20) | Records the real per-event cap; production clamp (20) at or below it | pending |
+| 3. Full-length write with clamped cadence (4000+ chars, TextEdit) | Complete replacement, no truncation | pending |
+| 4. Frozen target (SIGSTOP), Escape during "Reading..." | Run aborts within 5 s | pending |
+| 5. Frozen target, no Escape | Typed read-timeout error naming the app at 30 s | pending |
+| 6. Teams dormant-tree recovery re-run after the scoped-timeout change | Same result as the 005 entries above; a post-recovery run in another app behaves like a fresh launch | pending |
+| 7. Dual Settings windows (menu bar + Cmd+comma), edit and save in each | No saved change from either window is lost | pending |
+| 8. Failed action save, fix cause, save again | Exactly one action exists | pending |
+| 9. Hand-edit config.json while running, refocus Settings with clean draft | Edit appears in UI; saving keeps it | pending |
+| 10. Credential save with locked keychain, then unlock | Previous key still works; error names the status | pending |
+| 11. Revoke Accessibility mid-session, trigger action, re-grant | Permission-specific error; Escape works again without relaunch | pending |
+| 12. Outlook + Teams typing re-run after Shift/flags change | Output matches the existing per-app entries | pending |
+| 13. Debug logging flag on | Readable unified-log lines; visible launch alert; debug lines only with flag on | pending |
+
 ## Unsupported / Problematic Applications
 
 - **Terminal Emulators**: iTerm2, Terminal.app, Alacritty. (Terminals don't select and manage text via standard macOS AX text ranges).

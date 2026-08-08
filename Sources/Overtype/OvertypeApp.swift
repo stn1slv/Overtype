@@ -71,6 +71,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       alert.runModal()
     }
 
+    // A partially readable config is surfaced too (finding C3): the app runs,
+    // but some values were ignored or defaulted, and only the file's author
+    // can repair them.
+    if let warningMessage = ConfigStore.shared.loadWarningMessage {
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "Some configuration values were ignored"
+      alert.informativeText = warningMessage
+      alert.alertStyle = .warning
+      alert.runModal()
+    }
+
+    // Principle V requires that enabling debug logging PRESENTS an explicit
+    // warning to the user; a log line alone is not presentation (finding H7,
+    // closing the corresponding Known Deviation in the constitution). With the
+    // flag on, selected text and model output reach the unified log.
+    if Logger.shared.isDebugEnabled {
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "Debug logging is enabled"
+      alert.informativeText =
+        "Selected text and AI output will appear in the system log while this stays on.\n\n"
+        + "Disable it with:\ndefaults delete com.github.stn1slv.Overtype "
+        + Logger.debugLoggingDefaultsKey
+      alert.alertStyle = .warning
+      alert.runModal()
+    }
+
     // Register hotkeys
     hotkeyManager.registerHotkeys(for: ConfigStore.shared.config.actions) { [weak self] action in
       self?.engine.run(action: action)
@@ -79,30 +107,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Register Escape key to cancel in-flight tasks
     setupEscapeMonitors()
 
-    // QUIRK WORKAROUND: a global NSEvent monitor installed while the process is
-    // not Accessibility-trusted never starts delivering events, even after the
-    // user grants the permission. On the standard first-run flow (grant in
-    // System Settings without relaunching) Escape-cancel would silently never
-    // work, so poll until trust appears and then reinstall the monitors.
     if !isTrusted {
-      let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] timer in
-        guard AXIsProcessTrusted() else { return }
-        timer.invalidate()
-        self?.permissionPollTimer = nil
-        self?.reinstallEscapeMonitors()
-        Logger.shared.log(
-          "Accessibility permission granted; escape monitors reinstalled.", level: .info)
-      }
-      // .common instead of the default mode, so polling keeps firing while the
-      // run loop is tracking a menu or a drag (default-mode timers pause then).
-      RunLoop.main.add(timer, forMode: .common)
-      permissionPollTimer = timer
+      startPermissionPollIfNeeded()
     }
 
     // Listen for configuration changes
     NotificationCenter.default.addObserver(
       self, selector: #selector(configDidChange),
       name: .overtypeConfigDidChange, object: nil)
+
+    // A run that finds the permission revoked mid-session reports it here, so
+    // the same poll/reinstall path heals the monitors after a re-grant
+    // (finding H4).
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(accessibilityTrustLost),
+      name: .overtypeAccessibilityTrustLost, object: nil)
+  }
+
+  @objc func accessibilityTrustLost() {
+    startPermissionPollIfNeeded()
+  }
+
+  // QUIRK WORKAROUND: a global NSEvent monitor installed while the process is
+  // not Accessibility-trusted never starts delivering events, even after the
+  // user grants the permission. On the standard first-run flow (grant in
+  // System Settings without relaunching) Escape-cancel would silently never
+  // work, so poll until trust appears and then reinstall the monitors. The
+  // same applies after a mid-session revoke and re-grant (finding H4), which
+  // is routine after a binary update re-signs the app.
+  func startPermissionPollIfNeeded() {
+    guard permissionPollTimer == nil else { return }
+    let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] timer in
+      guard AXIsProcessTrusted() else { return }
+      timer.invalidate()
+      self?.permissionPollTimer = nil
+      self?.reinstallEscapeMonitors()
+      Logger.shared.log(
+        "Accessibility permission granted; escape monitors reinstalled.", level: .info)
+    }
+    // .common instead of the default mode, so polling keeps firing while the
+    // run loop is tracking a menu or a drag (default-mode timers pause then).
+    RunLoop.main.add(timer, forMode: .common)
+    permissionPollTimer = timer
   }
 
   func setupEscapeMonitors() {

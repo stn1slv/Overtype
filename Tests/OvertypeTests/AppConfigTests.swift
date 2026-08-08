@@ -184,6 +184,133 @@ final class AppConfigTests: XCTestCase {
     XCTAssertThrowsError(try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8)))
   }
 
+  // MARK: - Shortcut validity (C1): config.json is a hand-editing surface, so a
+  // negative keyCode/modifiers must yield an unusable-but-safe shortcut, never a
+  // trap in UInt(_:) at registration time.
+
+  func testShortcutWithNegativeModifiersYieldsNilKeyboardShortcut() throws {
+    let json = #"{"keyCode": 5, "modifiers": -1, "displayString": "bad"}"#
+    let shortcut = try JSONDecoder().decode(ActionShortcut.self, from: Data(json.utf8))
+    XCTAssertNil(shortcut.keyboardShortcut)
+  }
+
+  func testShortcutWithNegativeKeyCodeYieldsNilKeyboardShortcut() throws {
+    let json = #"{"keyCode": -7, "modifiers": 1835008, "displayString": "bad"}"#
+    let shortcut = try JSONDecoder().decode(ActionShortcut.self, from: Data(json.utf8))
+    XCTAssertNil(shortcut.keyboardShortcut)
+  }
+
+  func testValidShortcutYieldsKeyboardShortcut() throws {
+    // 1835008 == 0x1C0000 == control+option+command; keyCode 5 == kVK_ANSI_G.
+    // Matches the shipped default action's shortcut.
+    let json = #"{"keyCode": 5, "modifiers": 1835008, "displayString": "⌃⌥⌘G"}"#
+    let shortcut = try JSONDecoder().decode(ActionShortcut.self, from: Data(json.utf8))
+    let keyboardShortcut = try XCTUnwrap(shortcut.keyboardShortcut)
+    XCTAssertEqual(keyboardShortcut.modifiers.rawValue, UInt(1_835_008))
+  }
+
+  // MARK: - Type-tolerant decoding (C3): a wrong-typed value falls back per
+  // field, and a broken array element is dropped alone. One bad value must
+  // never cost the whole configuration.
+
+  func testWrongTypedShowHUDFallsBackToDefault() throws {
+    let json = #"{"global": {"showHUD": "true", "typingSpeedMultiplier": 2.0}}"#
+    let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+    XCTAssertTrue(config.global.showHUD)
+    XCTAssertEqual(config.global.typingSpeedMultiplier, 2.0)
+  }
+
+  func testWrongTypedTemperatureFallsBackToDefault() throws {
+    let json = #"""
+      {
+        "id": "a1", "title": "T", "providerID": "p1",
+        "systemPrompt": "s", "userPromptTemplate": "{{text}}",
+        "temperature": "hot"
+      }
+      """#
+    let action = try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(action.temperature, 0.0)
+  }
+
+  func testWrongTypedBaseURLFallsBackToNil() throws {
+    let json = #"{"id": "p1", "kind": "openai", "defaultModel": "m", "baseURL": 12345}"#
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertNil(provider.baseURL)
+  }
+
+  func testEmptyBaseURLStringFallsBackToNil() throws {
+    let json = #"{"id": "p1", "kind": "openai", "defaultModel": "m", "baseURL": ""}"#
+    let provider = try JSONDecoder().decode(ProviderConfig.self, from: Data(json.utf8))
+    XCTAssertNil(provider.baseURL)
+  }
+
+  func testUnknownProviderKindDropsOnlyThatElement() throws {
+    let json = #"""
+      {
+        "providers": [
+          {"id": "weird", "kind": "openrouter", "defaultModel": "m"},
+          {"id": "good", "kind": "openai", "defaultModel": "gpt-4o"}
+        ],
+        "actions": [
+          {"id": "a1", "title": "T", "providerID": "good",
+           "systemPrompt": "s", "userPromptTemplate": "{{text}}"}
+        ]
+      }
+      """#
+    let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(config.providers.map(\.id), ["good"])
+    XCTAssertEqual(config.actions.count, 1)
+  }
+
+  func testActionElementMissingRequiredFieldIsDroppedAlone() throws {
+    let json = #"""
+      {
+        "actions": [
+          {"id": "broken", "title": "T", "providerID": "p1"},
+          {"id": "ok", "title": "T", "providerID": "p1",
+           "systemPrompt": "s", "userPromptTemplate": "{{text}}"}
+        ]
+      }
+      """#
+    let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(config.actions.map(\.id), ["ok"])
+  }
+
+  func testShortcutMissingDisplayStringStillDecodes() throws {
+    let json = #"""
+      {
+        "id": "a1", "title": "T", "providerID": "p1",
+        "systemPrompt": "s", "userPromptTemplate": "{{text}}",
+        "shortcut": {"keyCode": 5, "modifiers": 1835008}
+      }
+      """#
+    let action = try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(action.shortcut?.displayString, "")
+    XCTAssertEqual(action.shortcut?.keyCode, 5)
+  }
+
+  func testDecodingIssuesAreCollectedAndNameKeysOnly() throws {
+    let json = #"""
+      {
+        "global": {"showHUD": "yes"},
+        "providers": [
+          {"id": "weird", "kind": "openrouter", "defaultModel": "m"}
+        ]
+      }
+      """#
+    let issues = ConfigDecodingIssues()
+    let decoder = JSONDecoder()
+    ConfigDecodingIssues.attach(issues, to: decoder)
+    _ = try decoder.decode(AppConfig.self, from: Data(json.utf8))
+
+    XCTAssertEqual(issues.issues.count, 2)
+    XCTAssertTrue(issues.issues.contains { $0.contains("showHUD") })
+    XCTAssertTrue(issues.issues.contains { $0.contains("weird") })
+    // Principle V: issue text names keys and ids, never the offending values
+    // (config.json holds user-authored prompts).
+    XCTAssertFalse(issues.issues.contains { $0.contains("yes") })
+  }
+
   func testAppConfigRoundTripEncoding() {
     let original = AppConfig(
       global: GeneralConfig(

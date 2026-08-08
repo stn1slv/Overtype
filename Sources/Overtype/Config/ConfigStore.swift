@@ -5,6 +5,12 @@ extension Notification.Name {
   /// config-driven re-registration pass. Observed by AppDelegate, which reloads
   /// providers and re-registers all action hotkeys from the current config.
   public static let overtypeConfigDidChange = Notification.Name("OvertypeConfigDidChange")
+
+  /// Posted by the engine when a run finds the Accessibility permission gone
+  /// (finding H4). Observed by AppDelegate, which starts the trust poll so the
+  /// Escape monitors are reinstalled automatically once trust returns.
+  public static let overtypeAccessibilityTrustLost = Notification.Name(
+    "OvertypeAccessibilityTrustLost")
 }
 
 public protocol ConfigStoring {
@@ -23,6 +29,11 @@ public class ConfigStore: ConfigStoring {
   /// app delegate surfaces it to the user (no silent failure); the unreadable
   /// file itself is preserved next to config.json before defaults take over.
   public private(set) var loadFailureMessage: String?
+
+  /// Set when the config file decoded, but some values were dropped or replaced
+  /// by defaults by the tolerant decoder (finding C3). Surfaced once at launch
+  /// by the app delegate; the issue text names keys and ids only, never values.
+  public private(set) var loadWarningMessage: String?
 
   public var config: AppConfig {
     return currentConfig
@@ -48,7 +59,19 @@ public class ConfigStore: ConfigStoring {
 
     do {
       let data = try Data(contentsOf: configURL)
-      currentConfig = try JSONDecoder().decode(AppConfig.self, from: data)
+      let issues = ConfigDecodingIssues()
+      let decoder = JSONDecoder()
+      ConfigDecodingIssues.attach(issues, to: decoder)
+      currentConfig = try decoder.decode(AppConfig.self, from: data)
+      if !issues.issues.isEmpty {
+        for issue in issues.issues {
+          Logger.shared.log("Config: \(issue)", level: .warning)
+        }
+        loadWarningMessage =
+          "Some values in config.json could not be read and were ignored or replaced by defaults:\n\n"
+          + issues.issues.map { "• \($0)" }.joined(separator: "\n")
+          + "\n\nThe file itself was not modified."
+      }
     } catch {
       Logger.shared.log("Failed to load config, falling back to default: \(error)", level: .error)
       // Non-destructive fallback: preserve the unreadable file before defaults
@@ -85,9 +108,19 @@ public class ConfigStore: ConfigStoring {
 
   public func reload() throws {
     let data = try Data(contentsOf: configURL)
-    let newConfig = try JSONDecoder().decode(AppConfig.self, from: data)
+    let issues = ConfigDecodingIssues()
+    let decoder = JSONDecoder()
+    ConfigDecodingIssues.attach(issues, to: decoder)
+    let newConfig = try decoder.decode(AppConfig.self, from: data)
+    // Reload is not a launch: issues go to the log only, the one-time launch
+    // alert is not re-armed (finding C3).
+    for issue in issues.issues {
+      Logger.shared.log("Config: \(issue)", level: .warning)
+    }
     self.currentConfig = newConfig
-    Logger.shared.log("Configuration reloaded successfully.", level: .info)
+    // Debug level: reload now runs on every Settings-window refocus (C7), and
+    // an info line per focus change is noise, not signal (review follow-up).
+    Logger.shared.log("Configuration reloaded successfully.", level: .debug)
   }
 
   public func save(_ newConfig: AppConfig) throws {
