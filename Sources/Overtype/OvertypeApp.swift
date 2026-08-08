@@ -71,6 +71,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       alert.runModal()
     }
 
+    // A partially readable config is surfaced too (finding C3): the app runs,
+    // but some values were ignored or defaulted, and only the file's author
+    // can repair them.
+    if let warningMessage = ConfigStore.shared.loadWarningMessage {
+      NSApp.activate(ignoringOtherApps: true)
+      let alert = NSAlert()
+      alert.messageText = "Some configuration values were ignored"
+      alert.informativeText = warningMessage
+      alert.alertStyle = .warning
+      alert.runModal()
+    }
+
     // Register hotkeys
     hotkeyManager.registerHotkeys(for: ConfigStore.shared.config.actions) { [weak self] action in
       self?.engine.run(action: action)

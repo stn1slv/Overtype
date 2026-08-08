@@ -18,7 +18,7 @@ Conventional Commits format, only with `swift test` green.
 
 ## Phase 1: Setup
 
-- [ ] T001 Verify green baseline: run `swift test` (229 tests expected) and `rg NSPasteboard Sources/ Vendor/` (no matches outside comments); no code changes
+- [X] T001 Verify green baseline: run `swift test` (229 tests expected) and `rg NSPasteboard Sources/ Vendor/` (no matches outside comments); no code changes
 
 ---
 
@@ -39,17 +39,17 @@ in quickstart.md section 2.
 
 ### Tests for User Story 1
 
-- [ ] T002 [P] [US1] Add failing tests: negative `modifiers`/`keyCode` decode and `keyboardShortcut` returning nil, valid values still working, in Tests/OvertypeTests/AppConfigTests.swift (C1)
-- [ ] T003 [P] [US1] Add failing tests: wrong-typed defaulted scalars fall back, invalid `baseURL` string yields nil, per-element drop for unknown `kind` and missing required fields, `displayString` defaults to empty, issue strings name keys/ids only, in Tests/OvertypeTests/AppConfigTests.swift (C3)
+- [X] T002 [P] [US1] Add failing tests: negative `modifiers`/`keyCode` decode and `keyboardShortcut` returning nil, valid values still working, in Tests/OvertypeTests/AppConfigTests.swift (C1)
+- [X] T003 [P] [US1] Add failing tests: wrong-typed defaulted scalars fall back, invalid `baseURL` string yields nil, per-element drop for unknown `kind` and missing required fields, `displayString` defaults to empty, issue strings name keys/ids only, in Tests/OvertypeTests/AppConfigTests.swift (C3)
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Make `ActionShortcut.keyboardShortcut` optional: nil when `keyCode < 0 || modifiers < 0`, convert via `UInt(bitPattern:)` after the guard, in Sources/Overtype/Config/AppConfig.swift (C1)
-- [ ] T005 [US1] Skip nil shortcuts with a `.warning` naming the action in Sources/Overtype/Core/HotkeyManager.swift; seed the recorder only from a non-nil value in Sources/Overtype/UI/Settings/ActionsTab.swift (C1)
-- [ ] T006 [US1] Implement `ConfigDecodingIssues` collector (via `JSONDecoder.userInfo`), `FailableDecodable` element wrapper, type-tolerant defaulted scalars, `baseURL` as string + `URL(string:)`, `displayString` default, in Sources/Overtype/Config/AppConfig.swift (C3)
-- [ ] T007 [US1] Pass the collector from `ConfigStore`, add `loadWarningMessage`, log each issue at `.warning`, in Sources/Overtype/Config/ConfigStore.swift (C3)
-- [ ] T008 [US1] Surface `loadWarningMessage` through the existing launch alert path in Sources/Overtype/OvertypeApp.swift (C3)
-- [ ] T009 [US1] Checkpoint: `swift test` fully green; commit `fix(config): tolerate malformed values without crash or config loss`
+- [X] T004 [US1] Make `ActionShortcut.keyboardShortcut` optional: nil when `keyCode < 0 || modifiers < 0`, convert via `UInt(bitPattern:)` after the guard, in Sources/Overtype/Config/AppConfig.swift (C1)
+- [X] T005 [US1] Skip nil shortcuts with a `.warning` naming the action in Sources/Overtype/Core/HotkeyManager.swift; seed the recorder only from a non-nil value in Sources/Overtype/UI/Settings/ActionsTab.swift (C1)
+- [X] T006 [US1] Implement `ConfigDecodingIssues` collector (via `JSONDecoder.userInfo`), `FailableDecodable` element wrapper, type-tolerant defaulted scalars, `baseURL` as string + `URL(string:)`, `displayString` default, in Sources/Overtype/Config/AppConfig.swift (C3)
+- [X] T007 [US1] Pass the collector from `ConfigStore`, add `loadWarningMessage`, log each issue at `.warning`, in Sources/Overtype/Config/ConfigStore.swift (C3)
+- [X] T008 [US1] Surface `loadWarningMessage` through the existing launch alert path in Sources/Overtype/OvertypeApp.swift (C3)
+- [X] T009 [US1] Checkpoint: `swift test` fully green; commit `fix(config): tolerate malformed values without crash or config loss`
 
 ---
 

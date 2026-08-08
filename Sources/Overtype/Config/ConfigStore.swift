@@ -24,6 +24,11 @@ public class ConfigStore: ConfigStoring {
   /// file itself is preserved next to config.json before defaults take over.
   public private(set) var loadFailureMessage: String?
 
+  /// Set when the config file decoded, but some values were dropped or replaced
+  /// by defaults by the tolerant decoder (finding C3). Surfaced once at launch
+  /// by the app delegate; the issue text names keys and ids only, never values.
+  public private(set) var loadWarningMessage: String?
+
   public var config: AppConfig {
     return currentConfig
   }
@@ -48,7 +53,19 @@ public class ConfigStore: ConfigStoring {
 
     do {
       let data = try Data(contentsOf: configURL)
-      currentConfig = try JSONDecoder().decode(AppConfig.self, from: data)
+      let issues = ConfigDecodingIssues()
+      let decoder = JSONDecoder()
+      ConfigDecodingIssues.attach(issues, to: decoder)
+      currentConfig = try decoder.decode(AppConfig.self, from: data)
+      if !issues.issues.isEmpty {
+        for issue in issues.issues {
+          Logger.shared.log("Config: \(issue)", level: .warning)
+        }
+        loadWarningMessage =
+          "Some values in config.json could not be read and were ignored or replaced by defaults:\n\n"
+          + issues.issues.map { "• \($0)" }.joined(separator: "\n")
+          + "\n\nThe file itself was not modified."
+      }
     } catch {
       Logger.shared.log("Failed to load config, falling back to default: \(error)", level: .error)
       // Non-destructive fallback: preserve the unreadable file before defaults
@@ -85,7 +102,15 @@ public class ConfigStore: ConfigStoring {
 
   public func reload() throws {
     let data = try Data(contentsOf: configURL)
-    let newConfig = try JSONDecoder().decode(AppConfig.self, from: data)
+    let issues = ConfigDecodingIssues()
+    let decoder = JSONDecoder()
+    ConfigDecodingIssues.attach(issues, to: decoder)
+    let newConfig = try decoder.decode(AppConfig.self, from: data)
+    // Reload is not a launch: issues go to the log only, the one-time launch
+    // alert is not re-armed (finding C3).
+    for issue in issues.issues {
+      Logger.shared.log("Config: \(issue)", level: .warning)
+    }
     self.currentConfig = newConfig
     Logger.shared.log("Configuration reloaded successfully.", level: .info)
   }
