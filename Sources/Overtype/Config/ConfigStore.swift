@@ -5,6 +5,12 @@ extension Notification.Name {
   /// config-driven re-registration pass. Observed by AppDelegate, which reloads
   /// providers and re-registers all action hotkeys from the current config.
   public static let overtypeConfigDidChange = Notification.Name("OvertypeConfigDidChange")
+
+  /// Posted by the engine when a run finds the Accessibility permission gone
+  /// (finding H4). Observed by AppDelegate, which starts the trust poll so the
+  /// Escape monitors are reinstalled automatically once trust returns.
+  public static let overtypeAccessibilityTrustLost = Notification.Name(
+    "OvertypeAccessibilityTrustLost")
 }
 
 public protocol ConfigStoring {

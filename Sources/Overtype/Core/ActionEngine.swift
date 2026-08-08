@@ -19,6 +19,20 @@ public class ActionEngine {
   }
 
   public func run(action: ActionConfig) {
+    // Trust is evaluated per run (finding H4): macOS silently revokes the
+    // Accessibility permission when the binary changes while the app runs, and
+    // a launch-only check then produced the misleading "cannot find the
+    // focused text element" for every run. The notification lets AppDelegate
+    // start its poll so the Escape monitors self-heal once trust returns.
+    guard AXIsProcessTrusted() else {
+      Logger.shared.log("Run blocked: Accessibility permission is not granted.", level: .warning)
+      FeedbackPresenter.shared.showError(
+        message: AXError.accessibilityPermissionRevoked.errorDescription
+          ?? "Accessibility permission required")
+      NotificationCenter.default.post(name: .overtypeAccessibilityTrustLost, object: nil)
+      return
+    }
+
     guard let provider = ProviderRegistry.shared.provider(for: action.providerID) else {
       Logger.shared.log("Provider \(action.providerID) not found.", level: .error)
       FeedbackPresenter.shared.showError(message: "Provider not configured")
@@ -42,6 +56,10 @@ public class ActionEngine {
       if showHUD { FeedbackPresenter.shared.showLoading(message: message) }
     }
 
+    // Captured on the main thread before the task starts, only for the
+    // read-timeout error message (finding H1).
+    let targetAppName = NSWorkspace.shared.frontmostApplication?.localizedName
+
     // Serialize runs (Principle II): TextWriter deliberately finishes typing
     // once the first destructive keystroke has landed, so a second hotkey press
     // must not start reading or writing while the previous run may still be
@@ -57,7 +75,8 @@ public class ActionEngine {
 
       showProgress("Reading...")
       do {
-        let selection = try selectionReader.readSelection()
+        let selection = try await Self.readWithHardTimeout(
+          seconds: Self.readPhaseTimeoutSeconds, appName: targetAppName, using: selectionReader)
 
         if selection.text.count > action.maxInputCharacters {
           FeedbackPresenter.shared.showError(message: "Selection too large")
@@ -168,6 +187,38 @@ public class ActionEngine {
         FeedbackPresenter.shared.showError(message: error.localizedDescription)
         Logger.shared.log("Action failed: \(error)", level: .error)
       }
+    }
+  }
+
+  /// Hard timeout for the read phase (constitution VI requires one; the 30 s
+  /// value was clarified in the 009 spec session). Normal reads finish in well
+  /// under a second and the verified Teams dormant-tree recovery in about
+  /// 3.6 s; this bound only ends runs against a pathological target that
+  /// nobody cancelled.
+  static let readPhaseTimeoutSeconds: Double = 30
+
+  /// Races the synchronous, uninterruptible AX read against a cancellable
+  /// sleep (finding H1). On timeout the group is cancelled and the typed
+  /// readTimedOut error surfaces; the cancelled read child observes
+  /// cancellation at its next check (each AX call is bounded by the scoped 2 s
+  /// messaging timeout) before the group returns, so the wait after a timeout
+  /// is at most about one AX call.
+  static func readWithHardTimeout(
+    seconds: Double, appName: String?, using reader: SelectionReading
+  ) async throws -> Selection {
+    try await withThrowingTaskGroup(of: Selection.self) { group in
+      group.addTask {
+        try reader.readSelection()
+      }
+      group.addTask {
+        try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        throw AXError.readTimedOut(appName: appName)
+      }
+      guard let result = try await group.next() else {
+        throw AXError.readTimedOut(appName: appName)
+      }
+      group.cancelAll()
+      return result
     }
   }
 

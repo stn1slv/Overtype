@@ -108,11 +108,11 @@ compilation-level unit coverage where pure.
 
 ### Implementation for User Story 4
 
-- [ ] T023 [US4] Add `try Task.checkCancellation()` before each lookup strategy and at every DFS node (DFS becomes throwing), in Sources/Overtype/Support/AXHelpers.swift (H1)
-- [ ] T024 [US4] Add `withBoundedAXMessaging(_:)` (system-wide 2 s timeout on entry, restore to 0 in `defer`), wrap the read-phase lookup in it, remove the permanent system-wide timeout from `retryFocusLookup`, keep all quirk comments, in Sources/Overtype/Support/AXHelpers.swift (H2)
-- [ ] T025 [US4] Wrap `readSelection()` in a 30 s hard-timeout race (task group, loser cancelled, timeout throws new `AXError.readTimedOut` naming the unresponsive target), in Sources/Overtype/Core/ActionEngine.swift and Sources/Overtype/Support/AXHelpers.swift (H1)
-- [ ] T026 [US4] Per-run trust check: `AXIsProcessTrusted()` at `run` start; new `AXError.accessibilityPermissionRevoked`; post `.overtypeAccessibilityTrustLost`; AppDelegate observer starts the existing poll/reinstall timer when not already running, in Sources/Overtype/Core/ActionEngine.swift, Sources/Overtype/Support/AXHelpers.swift, Sources/Overtype/OvertypeApp.swift (H4)
-- [ ] T027 [US4] Checkpoint: `swift test` fully green; commit `fix(ax): cancellable bounded reads, scoped timeouts, per-run trust check`
+- [X] T023 [US4] Add `try Task.checkCancellation()` before each lookup strategy and at every DFS node (DFS becomes throwing), in Sources/Overtype/Support/AXHelpers.swift (H1)
+- [X] T024 [US4] Add `withBoundedAXMessaging(_:)` (system-wide 2 s timeout on entry, restore to 0 in `defer`), wrap the read-phase lookup in it, remove the permanent system-wide timeout from `retryFocusLookup`, keep all quirk comments, in Sources/Overtype/Support/AXHelpers.swift (H2)
+- [X] T025 [US4] Wrap `readSelection()` in a 30 s hard-timeout race (task group, loser cancelled, timeout throws new `AXError.readTimedOut` naming the unresponsive target), in Sources/Overtype/Core/ActionEngine.swift and Sources/Overtype/Support/AXHelpers.swift (H1)
+- [X] T026 [US4] Per-run trust check: `AXIsProcessTrusted()` at `run` start; new `AXError.accessibilityPermissionRevoked`; post `.overtypeAccessibilityTrustLost`; AppDelegate observer starts the existing poll/reinstall timer when not already running, in Sources/Overtype/Core/ActionEngine.swift, Sources/Overtype/Support/AXHelpers.swift, Sources/Overtype/OvertypeApp.swift (H4)
+- [X] T027 [US4] Checkpoint: `swift test` fully green; commit `fix(ax): cancellable bounded reads, scoped timeouts, per-run trust check`
 
 ---
 

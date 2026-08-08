@@ -91,30 +91,48 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Register Escape key to cancel in-flight tasks
     setupEscapeMonitors()
 
-    // QUIRK WORKAROUND: a global NSEvent monitor installed while the process is
-    // not Accessibility-trusted never starts delivering events, even after the
-    // user grants the permission. On the standard first-run flow (grant in
-    // System Settings without relaunching) Escape-cancel would silently never
-    // work, so poll until trust appears and then reinstall the monitors.
     if !isTrusted {
-      let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] timer in
-        guard AXIsProcessTrusted() else { return }
-        timer.invalidate()
-        self?.permissionPollTimer = nil
-        self?.reinstallEscapeMonitors()
-        Logger.shared.log(
-          "Accessibility permission granted; escape monitors reinstalled.", level: .info)
-      }
-      // .common instead of the default mode, so polling keeps firing while the
-      // run loop is tracking a menu or a drag (default-mode timers pause then).
-      RunLoop.main.add(timer, forMode: .common)
-      permissionPollTimer = timer
+      startPermissionPollIfNeeded()
     }
 
     // Listen for configuration changes
     NotificationCenter.default.addObserver(
       self, selector: #selector(configDidChange),
       name: .overtypeConfigDidChange, object: nil)
+
+    // A run that finds the permission revoked mid-session reports it here, so
+    // the same poll/reinstall path heals the monitors after a re-grant
+    // (finding H4).
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(accessibilityTrustLost),
+      name: .overtypeAccessibilityTrustLost, object: nil)
+  }
+
+  @objc func accessibilityTrustLost() {
+    startPermissionPollIfNeeded()
+  }
+
+  // QUIRK WORKAROUND: a global NSEvent monitor installed while the process is
+  // not Accessibility-trusted never starts delivering events, even after the
+  // user grants the permission. On the standard first-run flow (grant in
+  // System Settings without relaunching) Escape-cancel would silently never
+  // work, so poll until trust appears and then reinstall the monitors. The
+  // same applies after a mid-session revoke and re-grant (finding H4), which
+  // is routine after a binary update re-signs the app.
+  func startPermissionPollIfNeeded() {
+    guard permissionPollTimer == nil else { return }
+    let timer = Timer(timeInterval: 3.0, repeats: true) { [weak self] timer in
+      guard AXIsProcessTrusted() else { return }
+      timer.invalidate()
+      self?.permissionPollTimer = nil
+      self?.reinstallEscapeMonitors()
+      Logger.shared.log(
+        "Accessibility permission granted; escape monitors reinstalled.", level: .info)
+    }
+    // .common instead of the default mode, so polling keeps firing while the
+    // run loop is tracking a menu or a drag (default-mode timers pause then).
+    RunLoop.main.add(timer, forMode: .common)
+    permissionPollTimer = timer
   }
 
   func setupEscapeMonitors() {

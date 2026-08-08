@@ -18,9 +18,15 @@ public class SelectionReader: SelectionReading {
   public func readSelection() throws -> Selection {
     // The initial read opts into dormant-tree recovery (wake flags + bounded
     // retry) so a freshly restarted Teams/VS Code works; the pre-write context
-    // re-check in ActionEngine deliberately stays single-shot.
-    let element = try AXHelpers.getFocusedElement(wakeDormantTree: true)
-    let text = try AXHelpers.getSelectedText(from: element)
+    // re-check in ActionEngine deliberately stays single-shot and unbounded.
+    // The whole read runs under the scoped 2 s AX messaging bound (findings
+    // H1/H2), so no single call against a hung target can stall Escape or the
+    // hard timeout for longer than that.
+    let (element, text) = try AXHelpers.withBoundedAXMessaging { () -> (AXUIElement, String) in
+      let element = try AXHelpers.getFocusedElement(wakeDormantTree: true)
+      let text = try AXHelpers.getSelectedText(from: element)
+      return (element, text)
+    }
 
     guard !text.isEmpty else {
       throw AXError.cannotReadSelectedText
