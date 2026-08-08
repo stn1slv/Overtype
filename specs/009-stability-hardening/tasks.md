@@ -142,10 +142,10 @@ sections 7 and 8.
 
 ## Phase 8: Polish & Cross-Cutting
 
-- [ ] T035 Full verification pass: `swift test`, `rg NSPasteboard Sources/ Vendor/`, and an audit of every log line added by this feature (keys, ids, titles, counts, statuses only; no selected text, prompts, output, or key values)
-- [ ] T036 [P] Update project docs where behavior changed: CLAUDE.md (config tolerance, debug switch, read-phase timeout, scoped AX messaging) and README hand-editing notes if they describe decode failure behavior
-- [ ] T037 Add the new manual acceptance scenarios (from quickstart.md sections 2-6) as pending entries in docs/compatibility.md so results can be recorded per app
-- [ ] T038 Checkpoint: `swift test` fully green; commit `docs(spec): polish, docs, and acceptance scaffolding for stability hardening`
+- [X] T035 Full verification pass: `swift test`, `rg NSPasteboard Sources/ Vendor/`, and an audit of every log line added by this feature (keys, ids, titles, counts, statuses only; no selected text, prompts, output, or key values)
+- [X] T036 [P] Update project docs where behavior changed: CLAUDE.md (config tolerance, debug switch, read-phase timeout, scoped AX messaging) and README hand-editing notes if they describe decode failure behavior
+- [X] T037 Add the new manual acceptance scenarios (from quickstart.md sections 2-6) as pending entries in docs/compatibility.md so results can be recorded per app
+- [X] T038 Checkpoint: `swift test` fully green; commit `docs(spec): polish, docs, and acceptance scaffolding for stability hardening`
 
 ---
 
