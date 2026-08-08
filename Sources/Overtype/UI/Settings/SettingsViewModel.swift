@@ -20,47 +20,91 @@ public struct AppOverrideDraft: Identifiable, Equatable {
 }
 
 public final class SettingsViewModel: ObservableObject {
+  /// The single draft shared by every Settings surface (finding C5): both the
+  /// SwiftUI `Settings` scene (Cmd+comma) and the AppDelegate's own window
+  /// used to create independent view models, each holding a full-config draft,
+  /// so saving in one silently reverted everything saved from the other.
+  public static let shared = SettingsViewModel()
+
   @Published public var global: GeneralConfig
   @Published public var providers: [ProviderConfig]
   @Published public var actions: [ActionConfig]
   @Published public var appOverridesList: [AppOverrideDraft]
+
+  /// Snapshot of the last configuration this draft adopted (loaded at init,
+  /// refreshed on every successful save and adoption). Unsaved edits are
+  /// detected against THIS, never against the store: comparing against the
+  /// store conflated "user has unsaved edits" with "someone else changed the
+  /// config" and made reload a permanent no-op (finding C7).
+  private var lastLoaded: AppConfig
+  private var lastLoadedOverrides: [AppOverrideDraft]
 
   public init() {
     let config = ConfigStore.shared.config
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
-    self.appOverridesList = SettingsViewModel.buildOverridesList(
-      from: config, preservingIDsFrom: [])
+    let overrides = SettingsViewModel.buildOverridesList(from: config, preservingIDsFrom: [])
+    self.appOverridesList = overrides
+    self.lastLoaded = config
+    self.lastLoadedOverrides = overrides
+  }
+
+  /// Whether the freshly loaded store config may replace the draft: only when
+  /// the draft equals the last-loaded snapshot (no unsaved edits). Overrides
+  /// are compared via the draft list, which catches in-progress rows
+  /// (including a newly added one whose bundleID is still empty). The rest is
+  /// compared with appTypingOverrides neutralized on both sides, because the
+  /// draft list already covers overrides and dictionary-vs-nil normalization
+  /// would misread a clean state as edited. Pure logic, unit-tested.
+  static func shouldAdoptReloadedConfig(
+    draft: AppConfig, lastLoaded: AppConfig,
+    draftOverrides: [AppOverrideDraft], lastLoadedOverrides: [AppOverrideDraft]
+  ) -> Bool {
+    var draftGlobal = draft.global
+    var loadedGlobal = lastLoaded.global
+    draftGlobal.appTypingOverrides = nil
+    loadedGlobal.appTypingOverrides = nil
+    return draftOverrides == lastLoadedOverrides
+      && draftGlobal == loadedGlobal
+      && draft.providers == lastLoaded.providers
+      && draft.actions == lastLoaded.actions
   }
 
   public func reloadFromDisk() {
+    // Actually read the file (finding C7): before this, the method read the
+    // in-process cache, so hand edits made while the app runs were invisible
+    // and the next GUI save overwrote them.
+    do {
+      try ConfigStore.shared.reload()
+    } catch {
+      Logger.shared.log("Reload of config.json failed; keeping current state.", level: .warning)
+      return
+    }
+
+    let draft = AppConfig(global: global, providers: providers, actions: actions)
+    guard
+      Self.shouldAdoptReloadedConfig(
+        draft: draft, lastLoaded: lastLoaded,
+        draftOverrides: appOverridesList, lastLoadedOverrides: lastLoadedOverrides)
+    else { return }
+
     let config = ConfigStore.shared.config
+    let externallyChanged = config != lastLoaded
     let storeOverrides = SettingsViewModel.buildOverridesList(
       from: config, preservingIDsFrom: appOverridesList)
-    // This runs on every settings-window refocus. Skip the resync when the user
-    // has unsaved in-memory edits, otherwise a half-entered row or unsaved change
-    // would be silently discarded when focus briefly leaves and returns.
-    //
-    // Overrides are compared via the draft list, which catches in-progress rows
-    // (including a newly added one whose bundleID is still empty). The rest of
-    // the config is compared with appTypingOverrides neutralized on both sides:
-    // the draft list already covers overrides, and comparing them here would
-    // misread a clean state as edited whenever the stored config represents no
-    // overrides as an empty dictionary while the model normalizes it to nil.
-    var inMemoryGlobal = global
-    var storeGlobal = config.global
-    inMemoryGlobal.appTypingOverrides = nil
-    storeGlobal.appTypingOverrides = nil
-    guard appOverridesList == storeOverrides,
-      inMemoryGlobal == storeGlobal,
-      providers == config.providers,
-      actions == config.actions
-    else { return }
     self.global = config.global
     self.providers = config.providers
     self.actions = config.actions
     self.appOverridesList = storeOverrides
+    self.lastLoaded = config
+    self.lastLoadedOverrides = storeOverrides
+
+    // Hotkeys and providers must follow an imported external edit; posted only
+    // on a real change so window refocus does not churn registrations.
+    if externallyChanged {
+      NotificationCenter.default.post(name: .overtypeConfigDidChange, object: nil)
+    }
   }
 
   private static func buildOverridesList(
@@ -113,6 +157,12 @@ public final class SettingsViewModel: ObservableObject {
     )
 
     try ConfigStore.shared.save(newConfig)
+
+    // The just-saved state is the new "clean" baseline for reload decisions
+    // (finding C7). The draft overrides list is snapshotted as-is: a leftover
+    // empty row is part of the clean state and is tidied on the next adoption.
+    lastLoaded = newConfig
+    lastLoadedOverrides = appOverridesList
 
     // Notify application delegate to reload hotkeys dynamically
     NotificationCenter.default.post(name: .overtypeConfigDidChange, object: nil)
@@ -339,6 +389,7 @@ public final class SettingsViewModel: ObservableObject {
       finalID = existingId
       // Edit mode
       if let index = actions.firstIndex(where: { $0.id == existingId }) {
+        let original = actions[index]
         actions[index] = ActionConfig(
           id: existingId,
           title: trimmedTitle,
@@ -353,6 +404,14 @@ public final class SettingsViewModel: ObservableObject {
           allowNewlines: allowNewlines,
           writeStrategy: writeStrategy
         )
+        do {
+          try saveSettings()
+        } catch {
+          // Keep in-memory state in step with the persisted file (finding C6).
+          actions[index] = original
+          throw error
+        }
+        return finalID
       }
     } else {
       // Create mode
@@ -374,6 +433,16 @@ public final class SettingsViewModel: ObservableObject {
         writeStrategy: writeStrategy
       )
       actions.append(newAction)
+      do {
+        try saveSettings()
+      } catch {
+        // Keep in-memory state in step with the persisted file (finding C6):
+        // without this rollback, retrying after a failed save appended a
+        // second copy with a suffixed id, and both later registered hotkeys.
+        actions.removeLast()
+        throw error
+      }
+      return finalID
     }
 
     try saveSettings()
@@ -421,7 +490,15 @@ public final class SettingsViewModel: ObservableObject {
       }
 
       actions[index].enabled.toggle()
-      try saveSettings()
+      do {
+        try saveSettings()
+      } catch {
+        // Keep in-memory state in step with the persisted file (finding C6):
+        // otherwise the switch shows a state the config does not hold, and the
+        // next unrelated save silently persists it.
+        actions[index].enabled.toggle()
+        throw error
+      }
     }
   }
 

@@ -84,16 +84,16 @@ overwritten hand edits (C4, C5, C6, C7).
 
 ### Tests for User Story 3
 
-- [ ] T016 [P] [US3] Add failing tests for `KeychainError` `LocalizedError` rendering (status code visible, message text present) in Tests/OvertypeTests/KeychainErrorTests.swift (C4)
-- [ ] T017 [P] [US3] Add failing tests for the unsaved-edit/adopt decision logic (clean draft adopts, dirty draft keeps, snapshot refresh on save) in Tests/OvertypeTests/SettingsReloadTests.swift (C7)
+- [X] T016 [P] [US3] Add failing tests for `KeychainError` `LocalizedError` rendering (status code visible, message text present) in Tests/OvertypeTests/KeychainErrorTests.swift (C4)
+- [X] T017 [P] [US3] Add failing tests for the unsaved-edit/adopt decision logic (clean draft adopts, dirty draft keeps, snapshot refresh on save) in Tests/OvertypeTests/SettingsReloadTests.swift (C7)
 
 ### Implementation for User Story 3
 
-- [ ] T018 [US3] Rework `store`: attribute-only search, `SecItemUpdate` else `SecItemAdd`, never delete first; `KeychainError: LocalizedError` with `OSStatus` + `SecCopyErrorMessageString`; account-only identity trade-off comment, in Sources/Overtype/Security/KeychainStore.swift (C4)
-- [ ] T019 [US3] Single shared draft: `SettingsViewModel.shared`; `SettingsWindow` consumes it via `@ObservedObject` (default `.shared`), in Sources/Overtype/UI/Settings/SettingsViewModel.swift and Sources/Overtype/UI/Settings/SettingsWindow.swift (C5)
-- [ ] T020 [US3] Rollback on `saveSettings()` throw in `saveAction` (create: removeLast; edit: restore original) and `toggleActionEnabled` (un-toggle), in Sources/Overtype/UI/Settings/SettingsViewModel.swift (C6)
-- [ ] T021 [US3] `lastLoaded` snapshot (init + after successful save); `reloadFromDisk()` calls `ConfigStore.shared.reload()` (throw: warn, keep state), adopts the store config when the draft is clean, rebuilds overrides, posts `.overtypeConfigDidChange`, in Sources/Overtype/UI/Settings/SettingsViewModel.swift (C7)
-- [ ] T022 [US3] Checkpoint: `swift test` fully green; commit `fix(settings): atomic keychain writes, shared draft, rollback, real reload`
+- [X] T018 [US3] Rework `store`: attribute-only search, `SecItemUpdate` else `SecItemAdd`, never delete first; `KeychainError: LocalizedError` with `OSStatus` + `SecCopyErrorMessageString`; account-only identity trade-off comment, in Sources/Overtype/Security/KeychainStore.swift (C4)
+- [X] T019 [US3] Single shared draft: `SettingsViewModel.shared`; `SettingsWindow` consumes it via `@ObservedObject` (default `.shared`), in Sources/Overtype/UI/Settings/SettingsViewModel.swift and Sources/Overtype/UI/Settings/SettingsWindow.swift (C5)
+- [X] T020 [US3] Rollback on `saveSettings()` throw in `saveAction` (create: removeLast; edit: restore original) and `toggleActionEnabled` (un-toggle), in Sources/Overtype/UI/Settings/SettingsViewModel.swift (C6)
+- [X] T021 [US3] `lastLoaded` snapshot (init + after successful save); `reloadFromDisk()` calls `ConfigStore.shared.reload()` (throw: warn, keep state), adopts the store config when the draft is clean, rebuilds overrides, posts `.overtypeConfigDidChange`, in Sources/Overtype/UI/Settings/SettingsViewModel.swift (C7)
+- [X] T022 [US3] Checkpoint: `swift test` fully green; commit `fix(settings): atomic keychain writes, shared draft, rollback, real reload`
 
 ---
 
