@@ -39,7 +39,9 @@ public final class SettingsViewModel: ObservableObject {
   private var lastLoaded: AppConfig
   private var lastLoadedOverrides: [AppOverrideDraft]
 
-  public init() {
+  // Private so `.shared` is the only draft (review follow-up to C5): a public
+  // initializer would leave the two-independent-drafts bug one call away.
+  private init() {
     let config = ConfigStore.shared.config
     self.global = config.global
     self.providers = config.providers

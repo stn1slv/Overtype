@@ -119,10 +119,16 @@ public class OpenAICompatibleProvider: AIProvider {
     if let refusal = message["refusal"] as? String, !refusal.isEmpty {
       throw ProviderError.responseBlocked(reason: "refusal")
     }
-    if let finishReason = firstChoice["finish_reason"] as? String,
-      finishReason == "content_filter"
-    {
+    let finishReason = firstChoice["finish_reason"] as? String
+    if finishReason == "content_filter" {
       throw ProviderError.responseBlocked(reason: "content filter")
+    }
+    // "length" means the output hit a token limit and the tail is missing;
+    // returning it as success would write a truncated replacement over the
+    // user's selection (009 review follow-up: the same silent-truncation class
+    // H6 closes for Ollama prompts, on the output side).
+    if finishReason == "length" {
+      throw ProviderError.outputTruncated
     }
 
     guard let content = message["content"] as? String else {

@@ -4,7 +4,7 @@ import XCTest
 final class SlugGenerationTests: XCTestCase {
 
     func testToSlug() {
-        let viewModel = SettingsViewModel()
+        let viewModel = SettingsViewModel.shared
         XCTAssertEqual(viewModel.toSlug("Translate French"), "translate-french")
         XCTAssertEqual(viewModel.toSlug("  Fix   Grammar!!  "), "fix-grammar")
         XCTAssertEqual(viewModel.toSlug("OpenAI compatible API"), "openai-compatible-api")
@@ -12,7 +12,7 @@ final class SlugGenerationTests: XCTestCase {
     }
 
     func testUniqueSlug() {
-        let viewModel = SettingsViewModel()
+        let viewModel = SettingsViewModel.shared
         let existing = ["fix-grammar", "proofread-email", "openai"]
 
         // No conflict

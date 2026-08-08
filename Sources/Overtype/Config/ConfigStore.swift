@@ -118,7 +118,9 @@ public class ConfigStore: ConfigStoring {
       Logger.shared.log("Config: \(issue)", level: .warning)
     }
     self.currentConfig = newConfig
-    Logger.shared.log("Configuration reloaded successfully.", level: .info)
+    // Debug level: reload now runs on every Settings-window refocus (C7), and
+    // an info line per focus change is noise, not signal (review follow-up).
+    Logger.shared.log("Configuration reloaded successfully.", level: .debug)
   }
 
   public func save(_ newConfig: AppConfig) throws {

@@ -66,6 +66,20 @@ final class OpenAICompatibleProviderTests: XCTestCase {
     }
   }
 
+  func testLengthFinishReasonMapsToOutputTruncated() {
+    // "length" means the tail of the output is missing; writing the partial
+    // content would silently lose the end of the user's text.
+    let json = #"""
+      {"choices": [{"message": {"content": "The cat sl"}, "finish_reason": "length"}]}
+      """#
+    XCTAssertThrowsError(try parse(json)) { error in
+      guard case ProviderError.outputTruncated = error else {
+        return XCTFail("expected outputTruncated, got \(error)")
+      }
+    }
+    XCTAssertFalse(ProviderError.outputTruncated.isRetryable)
+  }
+
   func testMissingContentWithoutRefusalMapsToInvalidResponse() {
     let json = #"{"choices": [{"message": {"role": "assistant"}}]}"#
     XCTAssertThrowsError(try parse(json)) { error in

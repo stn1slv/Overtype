@@ -17,6 +17,7 @@ Evaluated in order on HTTP 200:
 |---|---|
 | `choices[0].message.refusal` non-empty (content may be null) | `ProviderError.responseBlocked(reason:)` with a short category; the raw refusal text is never logged at info+ |
 | `choices[0].finish_reason == "content_filter"` | `ProviderError.responseBlocked(reason:)` |
+| `choices[0].finish_reason == "length"` | `ProviderError.outputTruncated` (non-retryable): the tail of the output is missing, and writing the partial content would silently lose the end of the user's text (post-review addition) |
 | `choices` empty, `message` missing, or `content` null/non-string with no refusal | `ProviderError.invalidResponse` |
 | `content` empty or whitespace-only | `ProviderError.emptyResponse` |
 | `content` beginning with a reasoning block (`<think>`/`<thinking>` variants, or bare reasoning closed by a lone terminator, per the shared stripper) | Reasoning block removed; remainder is the result; empty remainder maps to `ProviderError.emptyResponse` |

@@ -240,12 +240,18 @@ public class TextWriter: TextWriting {
   }
 
   /// Splits a UTF-16 buffer into chunks that target `chunkSize` units each, without
-  /// ever splitting a surrogate pair across a boundary. A chunk may therefore be one
-  /// unit longer than `chunkSize` when the boundary would otherwise fall between a
-  /// high and low surrogate. A non-BMP character (emoji, some CJK) is encoded as a
-  /// high+low surrogate pair; delivering an unpaired surrogate to
-  /// `keyboardSetUnicodeString` produces a broken/replacement character. Pure logic,
-  /// unit-tested.
+  /// ever splitting a surrogate pair across a boundary. A non-BMP character (emoji,
+  /// some CJK) is encoded as a high+low surrogate pair; delivering an unpaired
+  /// surrogate to `keyboardSetUnicodeString` produces a broken/replacement
+  /// character. When the boundary would fall inside a pair, the chunk SHRINKS by
+  /// one unit and the pair moves whole into the next chunk, so no chunk ever
+  /// exceeds `chunkSize` (review finding on C2: the earlier extend-by-one produced
+  /// a `maxChunkSizeUTF16 + 1` event at the cap, which the OS would silently
+  /// truncate into a lone high surrogate after the selection was already deleted).
+  /// The single exception is `chunkSize == 1`, where shrinking would empty the
+  /// range and stall the loop: there the pair travels as one 2-unit chunk. The
+  /// resulting invariant is `chunk.count <= max(chunkSize, 2)`, which stays within
+  /// the event cap for every clamped size. Pure logic, unit-tested.
   static func chunkRanges(for utf16: [UInt16], chunkSize: Int) -> [Range<Int>] {
     let total = utf16.count
     guard total > 0 else { return [] }
@@ -259,12 +265,18 @@ public class TextWriter: TextWriting {
     while i < total {
       var end = min(i + chunkSize, total)
       // If the chunk would end on a high surrogate that has a following low
-      // surrogate, extend by one so the pair stays together.
+      // surrogate, move the boundary so the pair stays together: shrink by one
+      // (pair goes to the next chunk, chunk stays <= chunkSize) unless that
+      // would empty the range, in which case carry the pair as a 2-unit chunk.
       if end < total {
         let last = utf16[end - 1]
         let isHighSurrogate = (0xD800...0xDBFF).contains(last)
         if isHighSurrogate {
-          end += 1
+          if end - 1 > i {
+            end -= 1
+          } else {
+            end += 1
+          }
         }
       }
       ranges.append(i..<end)
