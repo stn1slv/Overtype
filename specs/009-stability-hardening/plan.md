@@ -196,9 +196,12 @@ tested. Manual acceptance: hand-edit while running, refocus Settings.
 and at every DFS node visit (the DFS becomes throwing). AX messaging is bounded for the
 whole read by a scoped helper (see H2). `ActionEngine.run` wraps `readSelection()` in a
 30 s hard-timeout race (task group: the blocking read on one child, a cancellable 30 s
-sleep on the other; the loser is cancelled; timeout throws `ProviderError.timeout`).
-After a timeout, the abandoned read thread is still bounded by the 2 s per-call AX
-messaging cap and exits on its next cancellation check. Manual acceptance: Escape and
+sleep on the other; on timeout the group is cancelled and a new typed
+`AXError.readTimedOut` is thrown, whose message names the unresponsive target
+application; reusing `ProviderError.timeout` would misdescribe the failure as a
+provider request, per analyze finding I1). The group returns once the cancelled read
+child observes cancellation, which the 2 s per-call AX messaging cap and the new
+per-node checks bound to about one AX call. Manual acceptance: Escape and
 timeout behavior against an unresponsive target; Teams recovery unchanged.
 
 ### H2 - Scoped, restored AX messaging timeout
@@ -250,8 +253,11 @@ at lines 146-154 is corrected to state both clamp directions. Tests: trained win
 `Logger.log` switches to `os_log("%{public}@", ...)`. `isDebugEnabled` initializes from
 `UserDefaults.standard.bool(forKey: "OvertypeDebugLogging")` in `init`, and when true
 the initializer logs one `.warning` stating that selected text and model output will
-appear in logs (the explicit user warning Principle V requires; closes the Known
-Deviation). No new UI. Verified live via `/usr/bin/log stream --predicate 'subsystem ==
+appear in logs. In addition (analyze finding C1, Principle V: the warning must be
+*presented to the user*, a log line alone is not presentation), when the flag is on at
+launch, AppDelegate shows the existing launch alert path with a privacy notice naming
+the consequence and how to turn the flag off. This fully closes the Known Deviation. No
+new Settings UI. Verified live via `/usr/bin/log stream --predicate 'subsystem ==
 "com.github.stn1slv.Overtype"'`.
 
 ### H8 - Shift in the wait; cleared flags on typed chunks

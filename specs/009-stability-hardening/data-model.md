@@ -54,7 +54,7 @@ value is never deleted ahead of a durable write. Deletion semantics unchanged
 | `KeychainError` + `LocalizedError` | CHANGED: renders `OSStatus` numerically plus system message text | C4 |
 | `ProviderError.responseBlocked(reason:)` | Reused for OpenAI-compatible refusal / content filter (short category as reason) | H5 |
 | `ProviderError.emptyResponse` | Reused for OpenAI-compatible null/empty content | H5 |
-| `ProviderError.timeout` | Reused for the 30 s read-phase hard timeout | H1 |
+| `AXError.readTimedOut` | NEW: 30 s read-phase hard timeout; message names the unresponsive target application | H1 |
 
 ## Notifications
 

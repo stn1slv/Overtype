@@ -110,7 +110,7 @@ compilation-level unit coverage where pure.
 
 - [ ] T023 [US4] Add `try Task.checkCancellation()` before each lookup strategy and at every DFS node (DFS becomes throwing), in Sources/Overtype/Support/AXHelpers.swift (H1)
 - [ ] T024 [US4] Add `withBoundedAXMessaging(_:)` (system-wide 2 s timeout on entry, restore to 0 in `defer`), wrap the read-phase lookup in it, remove the permanent system-wide timeout from `retryFocusLookup`, keep all quirk comments, in Sources/Overtype/Support/AXHelpers.swift (H2)
-- [ ] T025 [US4] Wrap `readSelection()` in a 30 s hard-timeout race (task group, loser cancelled, timeout throws `ProviderError.timeout`), in Sources/Overtype/Core/ActionEngine.swift (H1)
+- [ ] T025 [US4] Wrap `readSelection()` in a 30 s hard-timeout race (task group, loser cancelled, timeout throws new `AXError.readTimedOut` naming the unresponsive target), in Sources/Overtype/Core/ActionEngine.swift and Sources/Overtype/Support/AXHelpers.swift (H1)
 - [ ] T026 [US4] Per-run trust check: `AXIsProcessTrusted()` at `run` start; new `AXError.accessibilityPermissionRevoked`; post `.overtypeAccessibilityTrustLost`; AppDelegate observer starts the existing poll/reinstall timer when not already running, in Sources/Overtype/Core/ActionEngine.swift, Sources/Overtype/Support/AXHelpers.swift, Sources/Overtype/OvertypeApp.swift (H4)
 - [ ] T027 [US4] Checkpoint: `swift test` fully green; commit `fix(ax): cancellable bounded reads, scoped timeouts, per-run trust check`
 
@@ -135,7 +135,7 @@ sections 7 and 8.
 - [ ] T030 [US5] Extract the leading-reasoning-block stripper into a shared pure helper in Sources/Overtype/Providers/ (new file); `OllamaProvider` delegates to it; all existing OllamaProviderTests stay green, in Sources/Overtype/Providers/OllamaProvider.swift (H5)
 - [ ] T031 [US5] Add `endpointURL`/`parseResponseText` seams; map refusal and content-filter to `.responseBlocked(reason:)` (short category), null/invalid to `.invalidResponse`, empty to `.emptyResponse`; strip reasoning on the happy path; Keychain catch distinguishes `itemNotFound` from other statuses with a `.warning` naming key and status only, in Sources/Overtype/Providers/OpenAICompatibleProvider.swift (H5)
 - [ ] T032 [US5] Clamp `grantedContextWindow` to `min(contextWindowTokens, reported)`; correct the comment to state both clamp directions, in Sources/Overtype/Providers/OllamaProvider.swift (H6)
-- [ ] T033 [US5] Switch to `os_log("%{public}@", ...)`; initialize `isDebugEnabled` from `UserDefaults` key `OvertypeDebugLogging`; log one `.warning` privacy notice when enabled, in Sources/Overtype/Support/Logger.swift (H7)
+- [ ] T033 [US5] Switch to `os_log("%{public}@", ...)`; initialize `isDebugEnabled` from `UserDefaults` key `OvertypeDebugLogging`; log one `.warning` privacy notice when enabled, in Sources/Overtype/Support/Logger.swift; AND present a visible launch alert (existing alert path) when the flag is on, naming the privacy consequence and how to disable it, in Sources/Overtype/OvertypeApp.swift (H7, Principle V)
 - [ ] T034 [US5] Checkpoint: `swift test` fully green; commit `fix(providers): harden openai-compatible parsing, ollama window clamp, logging`
 
 ---
