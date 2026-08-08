@@ -271,6 +271,15 @@ scenarios for the verified apps (Outlook, Teams) before merge.
 
 No constitution violations to justify; table intentionally empty.
 
+### Release exception 2026-08-08 (v1.3.1)
+
+- v1.3.1 shipped with the 13 manual acceptance scenarios for this feature still
+  recorded as pending in docs/compatibility.md. This is an explicit, dated
+  exception to constitution Principle VIII, approved by the project owner on
+  2026-08-08. The scenarios remain the gate for declaring the hardening
+  verified; executing and recording them stays open work, and any regression
+  they later reveal is a release blocker for the next tag.
+
 ### Revision: Implementation Sync 2026-08-08
 
 - Reason: reconciled three artifact-drift items after implementation. The shared

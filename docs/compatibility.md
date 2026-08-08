@@ -31,8 +31,10 @@ Manual acceptance for this feature (`specs/005-teams-ax-recovery/quickstart.md`)
 ### Stability hardening acceptance (specs/009-stability-hardening)
 
 Manual acceptance for feature 009 (`specs/009-stability-hardening/quickstart.md`).
-Record results per scenario before the next release; the release must not ship
-with any item regressed (constitution VIII).
+Record results per scenario; a release must not ship with any item regressed
+(constitution VIII). Note: v1.3.1 shipped with these rows still pending, as an
+explicit, dated exception approved 2026-08-08 and recorded in the feature's
+plan.md; executing and recording them remains open work.
 
 | Scenario | Expected | Result |
 |----------|----------|--------|
