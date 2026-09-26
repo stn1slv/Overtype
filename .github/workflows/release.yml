@@ -15,7 +15,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Load-bearing: scripts/build-app.sh stamps CFBundleVersion from
           # `git rev-list --count HEAD`, which needs the full history. The
@@ -27,6 +27,9 @@ jobs:
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Run tests
+        run: swift test
 
       - name: Build .app bundle
         run: |
