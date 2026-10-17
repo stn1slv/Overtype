@@ -348,11 +348,13 @@ Findings:
 - `gpt-6-luna` accepts a temperature at effort `none`. The `acceptedOnlyAtLevels(["none"])` rule for Luna is confirmed; the reported error (temperature 0 at the default effort) is reproduced by the first request and avoided by what "Automatic" sends.
 - No GPT-6 model accepts effort `max` on Chat Completions, although the model pages list it. The four OpenAI profiles in `ModelProfiles.swift` were corrected to the lists above.
 
-#### Remaining acceptance (pending)
+#### End-to-end acceptance
+
+Built app 1.2.1 (build 44) from branch `010-model-aware-parameters`, run by the user on 2026-10-17.
 
 | # | Scenario | Expected | Result |
 |---|----------|----------|--------|
-| Q2 | Existing config, model changed to `gpt-6-luna`, `temperature: 0` kept (SC-001) | First request succeeds, no error HUD | pending |
+| Q2 | Existing config, model changed to `gpt-6-luna`, `temperature: 0` kept (SC-001) | First request succeeds, no error HUD | pass (2026-10-17) |
 | Q3 | Fresh install (SC-002) | Seeded model `gpt-6-luna`; "Fix grammar" succeeds with only a key added | pending |
 | Q4 | Unprofiled OpenAI model that rejects `temperature` (SC-003) | One "Retrying..." on the first run; one request on later runs | pending |
 | Q5 | Automatic per profile shape and latency (SC-005) | First-request success for each shape; lower median than the default level | pending |
