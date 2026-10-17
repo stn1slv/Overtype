@@ -25,7 +25,7 @@ Validation on save from the editor: a set temperature must be within 0.0 to 2.0 
 | `kind` | `ProviderKind` the profile applies to |
 | `modelID` | Exact model ID; matching rules in research R5 |
 | `reasoning` | Optional: which parameter (`level` for `reasoning_effort` / `output_config.effort` / `thinkingLevel`, or `thinkingBudget`), the supported values, and the preferred value |
-| `temperature` | Rule: `accepted`, `acceptedOnlyAtLevels(Set<String>)`, or `omitted` (rejected or provider says to remove it) |
+| `temperature` | Rule: `accepted`, `acceptedOnlyAtLevels(Set<String>)`, `rejected` (the model returns HTTP 400 for a non-default value), or `discouraged` (the provider's documentation says to remove it) |
 | `source` | Documentation page and date the profile is based on |
 
 The table content is in `contracts/model-profiles.md`.
@@ -50,7 +50,7 @@ The table content is in `contracts/model-profiles.md`.
 Resolution order (pure function, called by `ActionEngine.run` and by the Actions editor):
 1. Look up the profile for `(kind, model)`.
 2. Reasoning: the override if set, otherwise the profile's preferred value, otherwise none. Withheld when the kind takes no reasoning setting (Ollama), when the profile says the value is unsupported, or when it was learned as rejected.
-3. Temperature: the override if set, otherwise none. Withheld for Anthropic (always), when the profile rule is `omitted`, when the rule is `acceptedOnlyAtLevels` and the effective reasoning level is not in that set, or when it was learned as rejected.
+3. Temperature: the override if set, otherwise none. Withheld for Anthropic (always), when the profile rule is `rejected` or `discouraged`, when the rule is `acceptedOnlyAtLevels` and the effective reasoning level is not in that set, or when it was learned as rejected.
 4. A model without a profile: overrides pass through unchanged, except the provider-wide rules (Anthropic temperature, Ollama reasoning) and learned rejections.
 
 ## TransformRequest (changed, in-memory)
@@ -59,7 +59,11 @@ Resolution order (pure function, called by `ActionEngine.run` and by the Actions
 
 ## ParameterRejectionMemory (new, in-memory, process lifetime)
 
-Key: `(providerID, baseURL.absoluteString, model)`. Value: `Set<DroppableParameter>`. Lock-protected. Read by `ActionEngine.run` before resolving, written by the fallback. Never persisted (research R7).
+Key: `(providerID, baseURL.absoluteString, model)`. Value: the rejected value per parameter, `[DroppableParameter: String]`, in the comparable form `wireValue(of:temperature:reasoning:)` produces (`"0.0"`, `"low"`, `"budget:0"`). Lock-protected. Never persisted (research R7).
+
+- `record(_:value:for:)`: written by the fallback with the value the run started with (a drop only removes parameters, so that is the rejected value).
+- `learnedRejections(for:matching:)`: the parameters whose remembered value equals the value a resolved request would send now. A changed value therefore no longer matches and is sent again.
+- `GenerationParameterResolver.resolve(kind:model:temperatureOverride:reasoningOverride:memory:key:)` resolves once without learned rejections, asks the memory which of the resulting values were rejected, and resolves again with those. `ActionEngine.run` and the Actions editor both call it, so the editor shows what a run sends. Once the "Automatic" value itself was rejected, `automaticReasoning` is `nil` and the editor caption reads "Automatic (model default)".
 
 ## ProviderError (changed)
 
