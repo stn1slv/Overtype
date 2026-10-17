@@ -19,6 +19,11 @@
 - Q: Gemini 3.x and 4: Google's documentation says to remove `temperature` from all requests, but existing configurations store `temperature: 0` only because the editor required a value. What happens? → A: The profile omits it. A temperature is not sent to a model whose profile says the provider's documentation tells clients to remove it, even when the action stores one, and the editor says so.
 - Default chosen without asking (reversible): Anthropic keeps feature 007's rule of never sending `temperature`. The twelve newest Claude models reject any non-default value; sending it to older models only would be exactly the list 007 refused, and the latency gain for Anthropic comes from effort, not temperature. What changes for Anthropic is that profiled models now get a reasoning effort.
 - Q: Which OpenAI model should Overtype use when the user has not chosen one? → A: `gpt-6-luna`. It becomes the default model of the seeded OpenAI provider and the pre-filled model for a new OpenAI provider; models the user already configured are never changed.
+- Q: Do the profile coverage and documentation rules apply to Ollama recipes? → A: No. FR-003 and FR-027 apply only to providers that have profiles (OpenAI-compatible, Anthropic, Gemini); the Ollama recipe (`llama3.2`) is exempt because FR-005 rules out Ollama profiles.
+- Q: Does SC-004 cover actions without a stored temperature? → A: No. SC-004 applies to actions that store a temperature value; an action with no `temperature` key intentionally changes from 0.0 to "Automatic" (see Assumptions).
+- Q: How is SC-005's "every profiled model succeeds" verified? → A: Per profile shape, not per model: one first-request success each for an OpenAI model with `none` (`gpt-6-luna`), an OpenAI model without `none` (`gpt-6.1-sol`), an Anthropic model (`claude-haiku-5-5`), a Gemini `thinkingLevel` model preferring `minimal` (`gemini-3.5-flash-lite`), one preferring `low` (`gemini-3.8-flash`), and a Gemini `thinkingBudget` model (`gemini-2.5-flash`). The latency clause stays one model per provider.
+- Q: Which Gemini models does FR-003 deliberately leave out? → A: `gemini-2.5-flash-lite` (it does not think by default, so a profile would change nothing) and Gemini preview models other than `gemini-3-flash-preview` and `gemini-3.1-pro-preview`.
+- Q: How is FR-019 (an upgrade never changes a configured default model) verified? → A: By a unit test showing that loading an existing configuration never replaces its providers' `defaultModel` with the seeded value.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -109,7 +114,7 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 
 - **FR-001**: Overtype MUST ship built-in model profiles for the OpenAI-compatible, Anthropic and Gemini providers. A profile records, per model: the provider's reasoning parameter and the values the model supports, whether the model accepts a temperature (and under which reasoning value), and the reasoning value Overtype prefers. Overtype prefers the lowest latency that the model supports, because it rewrites text while the user waits.
 - **FR-002**: The reasoning parameter is provider-native: `reasoning_effort` for OpenAI, `output_config.effort` for Anthropic, and for Gemini either `thinkingLevel` or `thinkingBudget`, as the model's profile records. Overtype MUST NOT send both Gemini parameters in one request.
-- **FR-003**: The initial profiles MUST cover at least: the OpenAI GPT-6 family (`gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra`, `gpt-6.1-sol`); the Claude models listed in Anthropic's effort documentation; the current Gemini 3.x and 4 text models and the Gemini 2.5 text models; and every model named in Overtype's seeded configuration and documentation recipes. Each profile MUST record the documentation source and date it is based on, and model IDs MUST be checked against the providers' deprecation pages.
+- **FR-003**: The initial profiles MUST cover at least: the OpenAI GPT-6 family (`gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra`, `gpt-6.1-sol`); the Claude models listed in Anthropic's effort documentation; the current Gemini 3.x and 4 text models and the Gemini 2.5 text models; and every model named in Overtype's seeded configuration and documentation recipes for providers that have profiles (OpenAI-compatible, Anthropic, Gemini; Ollama recipes are exempt under FR-005). Deliberately excluded: `gemini-2.5-flash-lite` (it does not think by default, so a profile would change nothing) and Gemini preview models other than `gemini-3-flash-preview` and `gemini-3.1-pro-preview`. Each profile MUST record the documentation source and date it is based on, and model IDs MUST be checked against the providers' deprecation pages.
 - **FR-004**: A model MUST match a profile when its ID equals the profile's model ID or is a dated snapshot of it.
 - **FR-005**: Profiles MUST be part of Overtype itself, updated with releases. The end user MUST NOT need to edit them or know they exist. Ollama has no profiles: Ollama applies generation options itself, and its models are the user's own.
 
@@ -134,7 +139,7 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 
 - **FR-017**: The seeded configuration MUST use `gpt-6-luna` as the OpenAI provider's default model, and its seeded action MUST use "Automatic" for both settings.
 - **FR-018**: When the user adds a new provider of the OpenAI kind in Settings, the default model field MUST be pre-filled with `gpt-6-luna`, and the user MUST be able to replace it.
-- **FR-019**: An existing provider's default model and an action's model MUST NOT be changed by an upgrade.
+- **FR-019**: An existing provider's default model and an action's model MUST NOT be changed by an upgrade. A unit test MUST show that loading an existing configuration never replaces its providers' `defaultModel` with the seeded value.
 
 **Configuration and editor**
 
@@ -148,7 +153,7 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 
 - **FR-025**: Profile lookup, effective-parameter resolution, request-body construction for every provider, and the decision whether an error allows an adaptive retry MUST be pure logic covered by unit tests.
 - **FR-026**: The reason for each omitted or dropped parameter MUST be recorded in the code where it happens, so the behavior is not "simplified" later.
-- **FR-027**: User-facing documentation MUST describe "Automatic", the override, the new OpenAI default model, and that Overtype adapts to OpenAI models it does not know. Documentation recipes MUST use models that have profiles and are not deprecated.
+- **FR-027**: User-facing documentation MUST describe "Automatic", the override, the new OpenAI default model, and that Overtype adapts to OpenAI models it does not know. Documentation recipes for providers that have profiles MUST use models that have profiles and are not deprecated; the Ollama recipe is exempt (FR-005).
 
 ### Key Entities
 
@@ -163,8 +168,8 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 - **SC-001**: A configuration that worked before this feature, with only the model changed to `gpt-6-luna`, runs successfully on the first request, with no change to any other setting.
 - **SC-002**: A fresh install runs the seeded "Fix grammar" action against `gpt-6-luna` successfully with only an API key added.
 - **SC-003**: For an OpenAI model with no profile that rejects `temperature`, the first run succeeds with exactly one extra request, and every later run in the same session sends exactly one request.
-- **SC-004**: For models without a profile, on every provider, 100% of the requests built after the upgrade are identical to the requests built before it.
-- **SC-005**: For every model in the initial profiles, a run with both settings on "Automatic" succeeds on the first request. For each provider, on one representative profiled model, the median time of five "Automatic" runs on the same text is lower than the median of five runs at the provider's default reasoning level.
+- **SC-004**: For models without a profile, on every provider, 100% of the requests built after the upgrade for actions that store a temperature value are identical to the requests built before it.
+- **SC-005**: A run with both settings on "Automatic" succeeds on the first request for one model of each profile shape: `gpt-6-luna` (OpenAI with `none`), `gpt-6.1-sol` (OpenAI without `none`), `claude-haiku-5-5` (Anthropic), `gemini-3.5-flash-lite` (Gemini level, prefers `minimal`), `gemini-3.8-flash` (Gemini level, prefers `low`) and `gemini-2.5-flash` (Gemini budget). For each provider, on one representative profiled model, the median time of five "Automatic" runs on the same text is lower than the median of five runs at the provider's default reasoning level.
 - **SC-006**: Requests to Ollama never contain a reasoning value, and requests to Anthropic never contain a temperature, in 100% of unit-tested cases.
 
 ## Assumptions
