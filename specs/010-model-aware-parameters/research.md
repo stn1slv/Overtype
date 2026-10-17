@@ -14,6 +14,7 @@ All provider facts below were read on 2026-10-17 from the vendors' own `llms.txt
 | `gpt-6.1-sol` | low, medium, high, xhigh, max | medium | never |
 
 - The guide states: "When reasoning effort is not `none`, remove `temperature`, `top_p`, and `top_logprobs`." It does not state that temperature is accepted at `none`; that is the inference. SC-001 confirms it for `gpt-6-luna`.
+- **Verified 2026-10-17 (quickstart Q1):** `gpt-6-luna` with effort `none` and temperature 0 returned HTTP 200, confirming the inference. Every 400 named the rejected parameter in `error.param` (code `unsupported_value`), which R2 relies on. The table above lists `max` from the model pages, but Chat Completions rejects it for all four models; the error lists `none`, `low`, `medium`, `high`, `xhigh` for Luna and Sol and `low`, `medium`, `high`, `xhigh` for Astra and 6.1 Sol. The profiles use the verified lists.
 - Chat Completions supports all four models for requests without tools, which is all Overtype sends.
 - No dated snapshots are documented yet; each page names the plain ID as the default snapshot.
 

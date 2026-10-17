@@ -138,7 +138,7 @@
 - [X] T044 [P] Update CLAUDE.md: model profiles and the resolver, the OpenAI-only fallback and its four-request bound, the optional `temperature` and new `reasoningEffort` action fields, and the new OpenAI default model
 - [X] T045 Review every omission and withholding site for an inline reason comment (FR-026) in Sources/Overtype/Providers/ and Sources/Overtype/Core/ActionEngine.swift
 - [X] T046 Run `make test`, `make lint` and `rg NSPasteboard Sources/ Vendor/`; confirm no `info`+ log line contains a server message or selected text
-- [ ] T047 Manual, needs the user's API keys: run quickstart Q1 (diagnostic) and adjust the `gpt-6-luna` and `gpt-6-sol` profiles in Sources/Overtype/Providers/ModelProfiles.swift if the temperature-at-`none` inference is wrong
+- [X] T047 Manual, needs the user's API keys: run quickstart Q1 (diagnostic) and adjust the `gpt-6-luna` and `gpt-6-sol` profiles in Sources/Overtype/Providers/ModelProfiles.swift if the temperature-at-`none` inference is wrong
 - [ ] T048 Manual, needs the user's API keys: run quickstart Q2 to Q5; for SC-005 also confirm one first-request success with both settings on Automatic for each profile shape (`gpt-6-luna`, `gpt-6.1-sol`, `claude-haiku-5-5`, `gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-2.5-flash`); record Q1 to Q6 and these runs in docs/compatibility.md
 
 ---

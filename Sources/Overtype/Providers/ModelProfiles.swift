@@ -103,7 +103,8 @@ enum ModelProfiles {
   // MARK: - Table
 
   private static let openAISource =
-    "developers.openai.com: Using GPT-6 guide and gpt-6-* model pages, read 2026-10-17"
+    "developers.openai.com: Using GPT-6 guide and gpt-6-* model pages, read 2026-10-17; "
+    + "values and Luna temperature rule verified against Chat Completions 2026-10-17"
   private static let anthropicSource =
     "platform.claude.com: Effort and Thinking (sampling parameters) pages, read 2026-10-17"
   private static let geminiSource =
@@ -113,13 +114,19 @@ enum ModelProfiles {
 
   /// OpenAI GPT-6 family (research R1). The guide says to remove `temperature`
   /// "when reasoning effort is not `none`"; that Luna and Sol accept it AT
-  /// `none` is INFERRED, not stated, and still pending the quickstart Q1
-  /// diagnostic run (tasks T047). If Q1 shows a 400, change both rules to
-  /// `.rejected`; until then the OpenAI fallback drops the parameter. Astra
-  /// and 6.1 Sol do not support `none`, so they never take a temperature.
+  /// `none` is not stated there; the quickstart Q1 diagnostic (2026-10-17)
+  /// confirmed it: `gpt-6-luna` with effort `none` and temperature 0 returned
+  /// HTTP 200. Astra and 6.1 Sol do not support `none`, so they never take a
+  /// temperature.
+  ///
+  /// EVIDENCE OVER DOCUMENTATION: the model pages list `max`, but Chat
+  /// Completions (the endpoint Overtype calls) rejects it for all four models;
+  /// each 400 lists the supported values, which are the lists below (verified
+  /// 2026-10-17, docs/compatibility.md). Do not add `max` back without a new
+  /// diagnostic run.
   private static let openAI: [ModelProfile] = {
-    let withNone = ["none", "low", "medium", "high", "xhigh", "max"]
-    let withoutNone = ["low", "medium", "high", "xhigh", "max"]
+    let withNone = ["none", "low", "medium", "high", "xhigh"]
+    let withoutNone = ["low", "medium", "high", "xhigh"]
     func profile(_ id: String, _ supported: [String], _ preferred: String, _ rule: TemperatureRule)
       -> ModelProfile
     {

@@ -45,8 +45,10 @@ final class ModelProfilesTests: XCTestCase {
 
   // MARK: - Table content (contracts/model-profiles.md)
 
-  private let allLevelsOpenAI = ["none", "low", "medium", "high", "xhigh", "max"]
-  private let noNoneOpenAI = ["low", "medium", "high", "xhigh", "max"]
+  // Verified against Chat Completions 2026-10-17: no GPT-6 model accepts `max`
+  // there, although the model pages list it.
+  private let allLevelsOpenAI = ["none", "low", "medium", "high", "xhigh"]
+  private let noNoneOpenAI = ["low", "medium", "high", "xhigh"]
   private let fullAnthropic = ["low", "medium", "high", "xhigh", "max"]
   private let noXhighAnthropic = ["low", "medium", "high", "max"]
   private let geminiWithMinimal = ["minimal", "low", "medium", "high"]

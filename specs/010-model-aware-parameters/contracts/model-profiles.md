@@ -8,10 +8,12 @@ Temperature rules: **accepted**; **only at X** (accepted only when the effective
 
 | Model ID | Supported values | Preferred | Temperature |
 |---|---|---|---|
-| `gpt-6-luna` | none, low, medium, high, xhigh, max | none | only at none |
-| `gpt-6-sol` | none, low, medium, high, xhigh, max | none | only at none |
-| `gpt-6-astra` | low, medium, high, xhigh, max | low | omitted |
-| `gpt-6.1-sol` | low, medium, high, xhigh, max | low | omitted |
+| `gpt-6-luna` | none, low, medium, high, xhigh | none | only at none |
+| `gpt-6-sol` | none, low, medium, high, xhigh | none | only at none |
+| `gpt-6-astra` | low, medium, high, xhigh | low | rejected |
+| `gpt-6.1-sol` | low, medium, high, xhigh | low | rejected |
+
+Verified 2026-10-17 against Chat Completions (quickstart Q1, recorded in `docs/compatibility.md`): each model's 400 for an unsupported effort lists exactly these values, so `max` (listed on the model pages) is not accepted on this endpoint, and `gpt-6-luna` returned 200 for effort `none` with temperature 0.
 
 ## Anthropic (`output_config.effort`)
 
