@@ -103,7 +103,7 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 - Two different parameters are rejected one after the other in the same OpenAI run: each is dropped once, so one run sends at most one adaptive retry per droppable parameter.
 - The adaptive retry also fails for a transient reason (timeout, 5xx): the existing single transient retry rules apply unchanged; the two retry kinds do not combine into an unbounded loop.
 - A hand-edited action has no `temperature` key, a `null` value, or a wrong-typed value: it is treated as "Automatic"; a wrong type is reported in the existing launch warning by key and action id, never by value. The same applies to `reasoningEffort`, where an empty or whitespace-only value also means "Automatic".
-- The action's provider kind changes after a reasoning effort was set: the stored value is kept; if the new provider does not understand it, the editor warns and a profiled model does not receive it.
+- The action's provider kind changes after a reasoning effort was set: when the new kind takes no reasoning setting (Ollama), the editor hides the control and does not save the value, so nothing invisible is stored; when the new kind has its own value list and does not understand the value, the value is kept, the editor warns, and a profiled model does not receive it.
 - The user changes the provider's model or base URL: rules learned for the old provider and model do not apply to the new one.
 
 ## Requirements *(mandatory)*
@@ -128,8 +128,8 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 
 **Adaptive fallback (OpenAI only)**
 
-- **FR-011**: When the OpenAI-compatible provider rejects a request with HTTP 400 and the structured error identifies a parameter that Overtype sent and is allowed to drop (`temperature` or `reasoning_effort`), Overtype MUST retry once without that parameter.
-- **FR-012**: Overtype MUST remember a dropped parameter for that provider, base URL and model for the rest of the app session, and MUST NOT send it in later runs.
+- **FR-011**: When the OpenAI-compatible provider rejects a request with HTTP 400 and the structured error identifies a parameter that Overtype sent and is allowed to drop (`temperature` or `reasoning_effort`), Overtype MUST retry once without that parameter, but only when the value it sent was a plausible one: a temperature from 0.0 to 2.0, or a reasoning level from the OpenAI value list in FR-022. A rejection of any other value, such as a typo, surfaces as the existing API error.
+- **FR-012**: Overtype MUST remember a dropped parameter together with the value that was rejected, for that provider, base URL and model, for the rest of the app session, and MUST NOT send that same value in later runs; a different value for the parameter is sent again.
 - **FR-013**: The adaptive fallback MUST NOT apply to any other error, MUST be cancellable, MUST show the existing retry feedback, and MUST NOT change the existing transient retry rules.
 - **FR-014**: Before the fallback is relied on, a recorded diagnostic run MUST confirm that OpenAI's structured error names the rejected parameter for both `temperature` and `reasoning_effort` (Principle III).
 - **FR-015**: The fallback MUST NOT apply to Anthropic or Gemini.
@@ -154,12 +154,13 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 - **FR-025**: Profile lookup, effective-parameter resolution, request-body construction for every provider, and the decision whether an error allows an adaptive retry MUST be pure logic covered by unit tests.
 - **FR-026**: The reason for each omitted or dropped parameter MUST be recorded in the code where it happens, so the behavior is not "simplified" later.
 - **FR-027**: User-facing documentation MUST describe "Automatic", the override, the new OpenAI default model, and that Overtype adapts to OpenAI models it does not know. Documentation recipes for providers that have profiles MUST use models that have profiles and are not deprecated; the Ollama recipe is exempt (FR-005).
+- **FR-028**: When a run does not send an override that the action sets, Overtype MUST log it at `warning` level, naming the parameter, the reason and the model, never the value (Principle VI).
 
 ### Key Entities
 
 - **Model profile**: Overtype's built-in knowledge about one model of one provider: the reasoning parameter and supported values, the temperature rule, the preferred reasoning value, and the documentation source and date.
 - **Action override**: an optional temperature (0.0 to 2.0) and an optional reasoning effort (provider-native text) on an action. Absent means "Automatic".
-- **Learned rejection**: a parameter that a specific OpenAI-compatible provider, base URL and model rejected during the current app session. It is held in memory only.
+- **Learned rejection**: a parameter, and the value of it, that a specific OpenAI-compatible provider, base URL and model rejected during the current app session. Only that value is withheld later. It is held in memory only.
 
 ## Success Criteria *(mandatory)*
 
@@ -183,3 +184,10 @@ An advanced user wants more careful rewrites from a "Rewrite formally" action an
 - Overtype sends no `top_p`, `top_k`, `top_logprobs` or `logprobs` today, so the other sampling parameters in the providers' guidance need no handling.
 - No new network endpoint, no clipboard use, and no logging of selected text or model output are introduced. The adaptive retry is a second request to the same provider before any write, so the selection stays untouched (Principle II).
 - The SC-001, SC-002, SC-003 and SC-005 acceptance runs and the FR-014 diagnostic run use the user's own provider accounts and are recorded in `docs/compatibility.md`.
+
+## Revisions
+
+### Revision: Implementation Sync 2026-10-17 [Sync: review-fixes-pass-2]
+- Reason: Recorded the accepted multi-model review fixes (commit 333496b): the OpenAI fallback drops only plausible values, learned rejections remember the rejected value, the editor no longer saves a hidden reasoning value, and withheld overrides are logged at run time.
+- Items: FR-011; FR-012; FR-028 (new); Key Entities "Learned rejection"; Edge Cases "The action's provider kind changes after a reasoning effort was set"
+- Approved: approve all

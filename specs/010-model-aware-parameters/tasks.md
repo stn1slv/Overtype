@@ -177,3 +177,9 @@ T013 GeminiProviderTests.swift
 3. **US3**: the fallback for unprofiled OpenAI models; ship only after the T047 diagnostic, or ship inert if `error.param` turns out to be absent.
 4. **US4**: editor controls.
 5. **Polish**: docs, comment review, full checks, manual acceptance.
+
+## Remediation: Gaps
+
+- [ ] T049 Update the `TemperatureRule` cases in the ModelProfile entity to `accepted`, `acceptedOnlyAtLevels`, `rejected` and `discouraged` (replacing `omitted`) in specs/010-model-aware-parameters/data-model.md [Sync: review-fixes-pass-2]
+- [ ] T050 Update the ParameterRejectionMemory entity to store the rejected value per parameter (`record(_:value:for:)`, `learnedRejections(for:matching:)`, `wireValue`) and describe `GenerationParameterResolver.resolve(...memory:key:)` in specs/010-model-aware-parameters/data-model.md [Sync: review-fixes-pass-2]
+- [ ] T051 Update the OpenAI error classification and "Adaptive fallback" rules to drop only plausible values (temperature 0.0 to 2.0, or a reasoning level from the OpenAI value list) and to remember the rejected value in specs/010-model-aware-parameters/contracts/request-parameters.md [Sync: review-fixes-pass-2]

@@ -58,30 +58,31 @@ Result: PASS. Post-design re-check: PASS (no design artifact introduced a violat
 ### New files
 
 - `Sources/Overtype/Providers/ModelProfiles.swift`: `ModelProfile`, `ReasoningSpec`, `TemperatureRule`, the built-in table (`contracts/model-profiles.md`), `profile(for:model:)` with the snapshot rule (research R5), and three per-kind dictionaries: editor reasoning values, suggested default model, and which kinds take a reasoning setting.
-- `Sources/Overtype/Providers/GenerationParameters.swift`: `ReasoningSetting`, `DroppableParameter`, `ResolvedGenerationParameters`, the pure resolver `GenerationParameterResolver.resolve(kind:model:temperatureOverride:reasoningOverride:learnedRejections:)`, and `ParameterRejectionMemory` (lock-protected, research R7).
+- `Sources/Overtype/Providers/GenerationParameters.swift`: `ReasoningSetting`, `DroppableParameter`, `ResolvedGenerationParameters`, the pure resolver `GenerationParameterResolver.resolve(kind:model:temperatureOverride:reasoningOverride:learnedRejections:)` plus `resolve(...memory:key:)`, which applies a learned rejection only when this run would send the same value and is used by both `ActionEngine.run` and the Actions editor, and `ParameterRejectionMemory` (lock-protected, research R7), which records the rejected value per parameter (`record(_:value:for:)`, `learnedRejections(for:matching:)`, `wireValue`) so a changed value is sent again; the "Automatic" caption is empty once that automatic value was rejected.
 
 ### Changed files
 
 - `Providers/AIProvider.swift`: `TransformRequest.temperature` becomes `Double?`; add `reasoning: ReasoningSetting? = nil` and `removing(_:)`; add `ProviderError.parameterRejected` with branches in `errorDescription`, `isRetryable` (false) and `logLabel`.
-- `Providers/OpenAICompatibleProvider.swift`: static `requestBody(model:systemPrompt:userPrompt:temperature:reasoning:)`; static `extractRejectedParameter(from:)` reading `error.param`; throw `parameterRejected` on a 400 that names a droppable parameter.
+- `Providers/OpenAICompatibleProvider.swift`: static `requestBody(model:systemPrompt:userPrompt:temperature:reasoning:)`; static `extractRejectedParameter(from:)` reading `error.param`; static `isPlausibleValue(of:in:)` (temperature 0.0 to 2.0, or a reasoning level from the OpenAI value list); throw `parameterRejected` on a 400 that names a droppable parameter whose sent value is plausible, and `apiError` otherwise, so a typo keeps its 400.
 - `Providers/AnthropicProvider.swift`: `requestBody` gains `effort: String?` and emits `output_config` when set; the omission comment is updated (temperature still never sent; effort now sent for profiled models).
 - `Providers/GeminiProvider.swift`: extract static `requestBody(systemPrompt:userPrompt:temperature:reasoning:)`; `generationConfig` omitted when empty (research R9).
 - `Providers/OllamaProvider.swift`: `requestBody` takes `temperature: Double?`; `options.temperature` only when set.
-- `Core/ActionEngine.swift`: resolve parameters before building the request (profile + overrides + learned rejections); `transformWithRetry` gains a defaulted `recordRejection` closure and the drop loop (`contracts/request-parameters.md`, "Adaptive fallback").
+- `Core/ActionEngine.swift`: resolve parameters before building the request (profile + overrides + learned rejections, through `resolve(...memory:key:)`); log each withheld override at `warning` with parameter, reason and model, never the value (FR-028); record a drop with the value the run started with; `transformWithRetry` gains a defaulted `recordRejection` closure and the drop loop (`contracts/request-parameters.md`, "Adaptive fallback").
 - `Config/AppConfig.swift`: `ActionConfig.temperature: Double?`, new `reasoningEffort: String?`, tolerant decode with blank-to-nil, init defaults `nil`.
 - `Config/DefaultConfig.swift`: `defaultModel` `gpt-6-luna`; seeded action without `temperature`.
 - `UI/Settings/SettingsViewModel.swift`: `saveAction` takes `temperature: Double?` and `reasoningEffort: String?`; range check only when set.
-- `UI/Settings/ActionsTab.swift`: "Automatic" toggle plus slider for temperature; reasoning picker with "Automatic (<resolved>)", the kind's values, and a preserved custom value; warning text from `withheldOverrides`; picker hidden for kinds that take no reasoning setting.
+- `UI/Settings/ActionsTab.swift`: "Automatic" toggle plus slider for temperature; reasoning picker with "Automatic (<resolved>)", the kind's values, and a preserved custom value; warning text from `withheldOverrides`; picker hidden for kinds that take no reasoning setting, and for those kinds the reasoning value is neither resolved nor saved (`reasoningOverrideToSave`), so nothing invisible is stored.
 - `UI/Settings/ProvidersTab.swift`: pre-fill `defaultModel` from the suggested-model dictionary when adding a provider, and when the kind changes while the field still holds the previous suggestion or is empty.
 
 ### Tests
 
-New: `ModelProfilesTests` (exact match, both dated-snapshot forms, no match for `gpt-6-luna-mini`, kind isolation), `GenerationParameterResolverTests` (Automatic uses preferred; override wins; Luna temperature withheld at `medium`; Gemini 3.x temperature withheld; unsupported value withheld; unknown model passes overrides through; Anthropic temperature never; Ollama reasoning never; learned rejections removed; withheld reasons).
+New: `ModelProfilesTests` (exact match, both dated-snapshot forms, no match for `gpt-6-luna-mini`, kind isolation), `GenerationParameterResolverTests` (Automatic uses preferred; override wins; Luna temperature withheld at `medium`; Gemini 3.x temperature withheld; unsupported value withheld; unknown model passes overrides through; Anthropic temperature never; Ollama reasoning never; learned rejections removed; withheld reasons; value-keyed rejection memory), and `ActionParameterValidationTests` (the editor's pure `SettingsViewModel.normalizedGenerationOverrides`).
 
 Changed, intentionally:
 - `AppConfigTests`: missing `temperature` now decodes to `nil` (was `0.0`, line 159); wrong-typed now `nil` plus an issue (was `0.0`, line 232); new cases for `reasoningEffort` blank-to-nil and wrong type; encode omits both keys when nil; an old config with `"temperature": 0` keeps `0`.
 - `OllamaProviderTests`: the exact `options` key set stays `["temperature", "num_ctx"]` with a temperature, and a new case asserts `["num_ctx"]` without one.
 - `AnthropicProviderTests`: still asserts no `temperature`; new cases for `output_config` present and absent.
+- `ConfigStoreTests`: an existing configuration keeps its `defaultModel` and stored temperature through the decode `ConfigStore` uses (FR-019).
 - `OpenAICompatibleProviderTests`, `GeminiProviderTests`: body builder cases per contract; OpenAI error-param classification.
 - `TransformRetryTests`: existing tests compile unchanged (new parameters are defaulted); new cases for one drop and success, drop recorded, a second different drop, the same parameter rejected twice surfacing as `apiError`, cancellation during a drop, and the four-request bound with a transient failure mixed in.
 - `ProviderErrorRetryTests`, `ProviderErrorMessageTests`: the new case is not retryable and its label carries no message.
@@ -124,7 +125,8 @@ Sources/Overtype/
 └── UI/Settings/   ActionsTab.swift, ProvidersTab.swift, SettingsViewModel.swift
 
 Tests/OvertypeTests/
-├── ModelProfilesTests.swift (new), GenerationParameterResolverTests.swift (new)
+├── ModelProfilesTests.swift (new), GenerationParameterResolverTests.swift (new),
+│   ActionParameterValidationTests.swift (new), ConfigStoreTests.swift
 └── AppConfigTests, OllamaProviderTests, AnthropicProviderTests, OpenAICompatibleProviderTests,
     GeminiProviderTests, TransformRetryTests, ProviderErrorRetryTests, ProviderErrorMessageTests
 ```
@@ -137,3 +139,10 @@ Tests/OvertypeTests/
 |---|---|---|
 | A built-in per-model table (reverses feature 007's "no list") | The user requires the project, not the end user, to know model rules (spec Clarifications) | Never sending optional parameters cannot pick a fast reasoning level, and sending them blindly breaks models that reject them. |
 | A second retry kind in `transformWithRetry` | Unprofiled OpenAI models must not fail on a parameter Overtype could drop | Retrying inside the provider cannot show HUD progress and would hide a retry policy from the tested seam. |
+
+## Revisions
+
+### Revision: Implementation Sync 2026-10-17 [Sync: review-fixes-pass-2]
+- Reason: Recorded the accepted multi-model review fixes (commit 333496b) in the design and test lists: plausible-value gate in the OpenAI provider, value-keyed rejection memory and the shared `resolve(...memory:key:)`, run-time logging of withheld overrides, the editor no longer saving a hidden reasoning value, and the two test files the plan did not list.
+- Items: Design → "`Sources/Overtype/Providers/GenerationParameters.swift`"; Design → "`Providers/OpenAICompatibleProvider.swift`"; Design → "`Core/ActionEngine.swift`"; Design → "`UI/Settings/ActionsTab.swift`"; Tests → "New:"; Tests → "`ConfigStoreTests`" (new); Project Structure → test tree
+- Approved: approve all
