@@ -3,4 +3,27 @@ installed:
 - reconcile
 settings:
   auto_execute_hooks: true
-hooks: {}
+hooks:
+  after_implement:
+  - extension: reconcile
+    command: speckit.reconcile.run
+    enabled: true
+    optional: true
+    priority: 20
+    prompt: Did implementation surface a discovery the team accepts, or a gap the
+      artifacts should record? Re-run with a feature path and a description of what
+      drifted, e.g. specs/001-feature the screen shipped but is unreachable.
+    description: Amend the feature's spec, plan, and tasks from a gap report
+    condition: null
+  after_converge:
+  - extension: reconcile
+    command: speckit.reconcile.run
+    enabled: true
+    optional: true
+    priority: 20
+    prompt: Did convergence surface a discovery the team accepts that the artifacts
+      do not record yet? Re-run this command with a feature path and a description
+      of what drifted, e.g. specs/001-feature the endpoint shipped but the plan never
+      declared it.
+    description: Amend the feature's spec, plan, and tasks from a gap report
+    condition: null
