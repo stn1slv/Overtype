@@ -352,7 +352,7 @@ Findings:
 
 Built app 1.2.1 (build 44) from branch `010-model-aware-parameters`, run by the user on 2026-10-17.
 
-Note: the feature was merged with Q3 to Q6 still pending, as an explicit, dated exception approved 2026-10-17 and recorded in the feature's plan.md. No release may ship until they pass (constitution VIII); executing and recording them remains open work.
+Note: the feature was merged with Q3 to Q6 still pending, as an explicit, dated exception approved 2026-10-17 and recorded in the feature's plan.md. v1.3.3 then shipped with these rows still pending, as a second explicit, dated exception approved 2026-10-17 and recorded in the same plan.md; executing and recording them remains open work, and any regression they reveal blocks the next tag (constitution VIII).
 
 | # | Scenario | Expected | Result |
 |---|----------|----------|--------|
