@@ -140,6 +140,10 @@ Tests/OvertypeTests/
 | A built-in per-model table (reverses feature 007's "no list") | The user requires the project, not the end user, to know model rules (spec Clarifications) | Never sending optional parameters cannot pick a fast reasoning level, and sending them blindly breaks models that reject them. |
 | A second retry kind in `transformWithRetry` | Unprofiled OpenAI models must not fail on a parameter Overtype could drop | Retrying inside the provider cannot show HUD progress and would hide a retry policy from the tested seam. |
 
+## Merge exception 2026-10-17
+
+- The feature was merged to `main` with quickstart Q3 to Q6 (tasks T042 and T048) still recorded as pending in `docs/compatibility.md`. Q1 (the OpenAI diagnostic, T047) and Q2 (SC-001, the reported `gpt-6-luna` case, end to end) passed. This is an explicit, dated exception to constitution Principle VIII, approved by the project owner on 2026-10-17. It covers the merge only: no release may ship until Q3 to Q6 pass, and any regression they reveal is a release blocker for the next tag.
+
 ## Revisions
 
 ### Revision: Implementation Sync 2026-10-17 [Sync: review-fixes-pass-2]

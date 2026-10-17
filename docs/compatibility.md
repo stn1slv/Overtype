@@ -352,6 +352,8 @@ Findings:
 
 Built app 1.2.1 (build 44) from branch `010-model-aware-parameters`, run by the user on 2026-10-17.
 
+Note: the feature was merged with Q3 to Q6 still pending, as an explicit, dated exception approved 2026-10-17 and recorded in the feature's plan.md. No release may ship until they pass (constitution VIII); executing and recording them remains open work.
+
 | # | Scenario | Expected | Result |
 |---|----------|----------|--------|
 | Q2 | Existing config, model changed to `gpt-6-luna`, `temperature: 0` kept (SC-001) | First request succeeds, no error HUD | pass (2026-10-17) |
