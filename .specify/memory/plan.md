@@ -1,5 +1,7 @@
 # Overtype — Project Plan (Memory)
 
+> **Revision**: 2026-10-17 · Archived `specs/010-model-aware-parameters`. Composed shared Technical Context fields (Storage extended; Performance Goals and Constraints added, Performance Goals seeded from the 001 legacy block's "Performance goal" line plus 010); added the new provider modules to Project Structure; added a shared "Generation parameters" section; added configuration, integration-contract, testing and gotcha entries; corrected the Gemini `generationConfig` contract entry to the implemented state (temperature only when set, plus `thinkingConfig`). No new dependency. The feature's own Constitution Check and merge exception are not archived.
+
 Cumulative, project-level implementation plan, assembled by archiving merged
 feature plans. It follows the section ordering of
 `.specify/templates/plan-template.md`. Each entry carries a `[Source: …]` tag.
@@ -13,7 +15,9 @@ Bootstrapped 2026-08-02 from the first archived feature (Gemini Model Support).
 
 - **Language/Stack**: Swift 5.9, macOS 13+, SwiftUI, `URLSession` async/await.
 - **Build**: Swift Package Manager; `Makefile` wraps `build|test|lint|format|run`.
-- **Storage**: `~/Library/Application Support/Overtype/config.json` + macOS Keychain.
+- **Storage**: `~/Library/Application Support/Overtype/config.json` + macOS Keychain. Actions carry optional `temperature` and `reasoningEffort` keys (absent means "Automatic"); learned parameter rejections are held in memory only. `[Source: specs/010-model-aware-parameters/plan.md -> "Storage"]`
+- **Performance Goals**: AI text replacement workflow < 3 seconds total latency; instant feedback via HUD. "Automatic" lowers the median run time on profiled reasoning models; the resolver is a dictionary lookup and adds no measurable time. `[Source: specs/001-overtype/plan.md -> "Performance Goals"; specs/010-model-aware-parameters/plan.md -> "Performance Goals"]`
+- **Constraints**: No new network endpoint; at most four requests per run (two parameter drops plus the one transient retry); no selected text or server message in `info`+ logs; adding a provider stays a three-edit change (per-kind data in dictionaries, no new exhaustive `switch` over `ProviderKind`). `[Source: specs/010-model-aware-parameters/plan.md -> "Constraints"]`
 - **Testing**: XCTest for pure logic; manual acceptance for system-boundary code,
   recorded in `docs/compatibility.md`.
 - **Toolchain note**: `swift test` requires Xcode's XCTest. If `xcode-select -p`
@@ -34,11 +38,14 @@ Bootstrapped 2026-08-02 from the first archived feature (Gemini Model Support).
 Sources/Overtype/
 ├── Config/            # AppConfig, ConfigStore, DefaultConfig
 ├── Core/              # ActionEngine, ResponseSanitizer, TextWriter
-├── Providers/         # AIProvider protocol, ProviderRegistry, provider types
+├── Providers/         # AIProvider protocol, ProviderRegistry, provider types,
+│                      # ModelProfiles, GenerationParameters
 ├── Security/          # KeychainStore
 ├── Support/           # AXHelpers, PermissionManager, Logger
 └── UI/                # FeedbackPresenter, Settings/*
 ```
+
+- `Providers/ModelProfiles.swift`: built-in model profiles (OpenAI, Anthropic, Gemini), the dated-snapshot matching rule, and per-kind dictionaries (editor reasoning values, suggested default model, kinds without temperature). `Providers/GenerationParameters.swift`: `ReasoningSetting`, `DroppableParameter`, the pure `GenerationParameterResolver`, and the lock-protected `ParameterRejectionMemory`. `[Source: specs/010-model-aware-parameters/plan.md -> "New files"]`
 
 ### Feature increments
 
@@ -135,8 +142,16 @@ Sources/Overtype/
   fast-path check, the failure-timing/Escape scenario, and the regression sweep
   are outstanding (tasks T007, T009, T011, T013).
 
+### Generation parameters
+
+- **Profiles and one resolver.** Built-in profiles record, per model, the provider-native reasoning parameter and supported values, the temperature rule (`accepted`, `acceptedOnlyAtLevels`, `rejected`, `discouraged`), and the fastest supported value as Overtype's preference. One pure resolver turns (provider kind, model, action overrides, learned rejections) into the parameters to send plus the overrides it withheld and why. `ActionEngine.run` and the Actions editor both call it, so the editor's "Automatic (...)" caption and warnings always match the real request. `[Source: specs/010-model-aware-parameters/plan.md -> "Summary"]`
+- **Adaptive fallback, OpenAI only.** `OpenAICompatibleProvider` only classifies: a 400 whose `error.param` names `temperature` or `reasoning_effort` and whose sent value is plausible becomes `ProviderError.parameterRejected`; anything else stays `apiError`. `ActionEngine.transformWithRetry` drops the parameter, records the rejected value in `ParameterRejectionMemory` (keyed by provider id, base URL and model), shows "Retrying...", and resends without a pause. An undroppable rejection is rethrown as `apiError`. `[Source: specs/010-model-aware-parameters/plan.md -> "Core/ActionEngine.swift"]`
+- **Run-time logging.** Each withheld override is logged at `warning` with parameter, reason and model, never the value. `[Source: specs/010-model-aware-parameters/plan.md -> "Core/ActionEngine.swift"]`
+- **Editor.** The Actions tab has an "Automatic" temperature toggle plus slider, a reasoning picker with the provider kind's values and a preserved hand-edited value, and warnings from the resolver; for kinds without reasoning values the picker is hidden and no value is saved. The Providers tab pre-fills `gpt-6-luna` for a new OpenAI provider. `[Source: specs/010-model-aware-parameters/plan.md -> "UI/Settings/ActionsTab.swift"; specs/010-model-aware-parameters/plan.md -> "UI/Settings/ProvidersTab.swift"]`
+
 ### Configuration
 
+- Actions gain optional `temperature` (now `Double?`) and `reasoningEffort` (provider-native text). Missing, `null` or wrong-typed values decode as "Automatic" (wrong types are reported in the launch warning by key and action id); a blank `reasoningEffort` means "Automatic"; "Automatic" is encoded by omitting the key. The seeded configuration uses `gpt-6-luna` for the OpenAI provider and leaves the seeded action on "Automatic". `[Source: specs/010-model-aware-parameters/data-model.md -> "ActionConfig"; specs/010-model-aware-parameters/plan.md -> "Config/DefaultConfig.swift"]`
 - No configuration is added by the dormant-tree recovery: it is automatic and
   invisible, and its constants are compile-time values bound to the tested
   configuration (deliberately not exposed, to avoid untested combinations).
@@ -150,7 +165,11 @@ Sources/Overtype/
 - **Gemini `generateContent`** (only endpoint contacted for a Gemini run):
   `POST {base}models/{model}:generateContent`, auth via `x-goog-api-key` header
   (never in the URL). Request maps `systemInstruction`, `contents`, and
-  `generationConfig.temperature`. Success reads
+  `generationConfig`: `temperature` only when the resolver produced one, and
+  `thinkingConfig` with exactly one of `thinkingLevel` or `thinkingBudget`
+  (never both, which is a 400); `generationConfig` is omitted when empty.
+  `[Source: specs/010-model-aware-parameters/contracts/request-parameters.md -> "Gemini"]`
+  Success reads
   `candidates[0].content.parts[*].text`. Contract detail:
   `specs/004-gemini-provider/contracts/gemini-generatecontent.md`.
 - Failure mapping: non-200 → `.apiError` (reusing OpenAI-style message
@@ -158,6 +177,9 @@ Sources/Overtype/
   `promptFeedback.blockReason` / `finishReason == "SAFETY"` / no candidates →
   `.responseBlocked(reason:)`; empty text → `.emptyResponse`; malformed →
   `.invalidResponse`.
+- **OpenAI-compatible `chat/completions`**: `temperature` only when set; `reasoning_effort` for a resolved level. A 400 naming `temperature` (sent value within 0.0 to 2.0) or `reasoning_effort` (sent level in the OpenAI value list) in `error.param` becomes `ProviderError.parameterRejected`; anything else stays `apiError`. `[Source: specs/010-model-aware-parameters/contracts/request-parameters.md -> "OpenAI-compatible"]`
+- **Anthropic `messages`**: never a temperature; `output_config.effort` for a resolved level; no `thinking` key. `[Source: specs/010-model-aware-parameters/contracts/request-parameters.md -> "Anthropic"]`
+- **Ollama `/api/chat`**: `options.temperature` only when set; `num_ctx` always; never a reasoning value. `[Source: specs/010-model-aware-parameters/contracts/request-parameters.md -> "Ollama"]`
 
 ### Testing Strategy
 
@@ -169,6 +191,7 @@ Sources/Overtype/
 - Dormant-tree recovery adds **no** unit tests by design (system-boundary code,
   no new pure logic); the existing suite must stay green. Its verification is the
   manual procedure above.
+- Model-aware parameters: `ModelProfilesTests` (matching, the full profile table), `GenerationParameterResolverTests` (resolution, withheld reasons, value-keyed rejection memory), `ActionParameterValidationTests` (editor validation), body-builder tests in each provider's test file, OpenAI error classification, the fallback loop and its four-request bound in `TransformRetryTests`, and config decode/encode in `AppConfigTests` and `ConfigStoreTests`. Live behavior is verified by `specs/010-model-aware-parameters/quickstart.md` Q1 to Q6, recorded in `docs/compatibility.md`. `[Source: specs/010-model-aware-parameters/plan.md -> "Tests"]`
 
 ## Known Gotchas (from research)
 
@@ -197,6 +220,11 @@ Sources/Overtype/
 - **Key belongs in a header, not the URL.** The API key is sent as
   `x-goog-api-key`; putting it in a `?key=` query parameter risks leaking the
   secret into any URL-based logging (Principle V).
+
+- **OpenAI model pages are not the API.** The GPT-6 model pages list reasoning effort `max`, but Chat Completions rejects it for all four GPT-6 models; each 400 lists the accepted values in its message. `gpt-6-luna` does accept a temperature at effort `none` (inferred from the guide, confirmed live). Profiles use the verified lists. `[Source: specs/010-model-aware-parameters/research.md -> R1]`
+- **Only OpenAI names the rejected parameter.** OpenAI's 400 carries `error.param`; Anthropic's error body has only `type` and `message`, and Google documents no such field. That is why the adaptive fallback is OpenAI-only: matching message text is fragile and the message can echo submitted text. `[Source: specs/010-model-aware-parameters/research.md -> R2; specs/010-model-aware-parameters/research.md -> R3; specs/010-model-aware-parameters/research.md -> R4]`
+- **Gemini thinking parameters differ by generation.** Gemini 3.x and 4 take `thinkingLevel` (and `minimal` errors on 3.8 Flash and 4 Argon); 2.5 takes `thinkingBudget`; sending both in one request is a 400. Google says to remove `temperature` for 3.x and that 4 ignores it. Deprecated IDs (3.7 Flash, 3.5 Flash) are routed to a successor, so their profiles mirror the model that actually answers. `[Source: specs/010-model-aware-parameters/research.md -> R4]`
+- **Match snapshots strictly.** A profile matches only its exact ID or a dated snapshot (`-YYYY-MM-DD`, `-YYYYMMDD`), so `gpt-6-luna` never describes a future `gpt-6-luna-mini`, and Gemini `-preview` IDs are listed explicitly. `[Source: specs/010-model-aware-parameters/research.md -> R5]`
 
 ## Constitution Check (archived)
 

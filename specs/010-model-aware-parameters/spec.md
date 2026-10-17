@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-17
 
-**Status**: Draft
+**Status**: Completed
 
 **Input**: User description: "Optional per-action temperature and reasoning effort for the OpenAI-compatible provider. Problem: OpenAICompatibleProvider always sends the action's `temperature`; OpenAI reasoning models such as gpt-6-luna (default reasoning effort `medium`) reject any temperature other than the default with HTTP 400 (\"Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) value is supported.\"). OpenAI docs (Using GPT-6 guide, gpt-6-luna model page): when reasoning effort is not `none`, remove `temperature`, `top_p`, `top_logprobs`; gpt-6-luna and GPT-6 Sol support `reasoning_effort: \"none\"` (Chat Completions) which re-enables temperature and suits latency-critical tasks; GPT-6 Astra and GPT-6.1 Sol do not support `none`. Goal: (1) make action `temperature` optional; when unset the request omits it so the model uses its default; (2) add an optional per-action `reasoningEffort`; when set, the OpenAI-compatible request sends `reasoning_effort`, otherwise omits it. [...] Settings > Actions editor must let the user choose \"model default\" for temperature and pick or clear a reasoning effort. Request-body construction must be unit-testable as pure logic." Follow-ups from the user: "the project should know some details (and specifics regarding models) rather the end user who wants to use this project"; "also recheck https://platform.claude.com/llms.txt for anthropic models"; "also recheck google's apis https://ai.google.dev/api"; "also let's make gpt-6-luna a default model for openai (if user is not defined another)".
 
