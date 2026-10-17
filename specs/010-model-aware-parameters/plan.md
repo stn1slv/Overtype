@@ -144,6 +144,10 @@ Tests/OvertypeTests/
 
 - The feature was merged to `main` with quickstart Q3 to Q6 (tasks T042 and T048) still recorded as pending in `docs/compatibility.md`. Q1 (the OpenAI diagnostic, T047) and Q2 (SC-001, the reported `gpt-6-luna` case, end to end) passed. This is an explicit, dated exception to constitution Principle VIII, approved by the project owner on 2026-10-17. It covers the merge only: no release may ship until Q3 to Q6 pass, and any regression they reveal is a release blocker for the next tag.
 
+### Release exception 2026-10-17 (v1.3.3)
+
+- v1.3.3 shipped with quickstart Q3 to Q6 for this feature still recorded as pending in `docs/compatibility.md`. This is an explicit, dated exception to constitution Principle VIII, approved by the project owner on 2026-10-17, and it replaces the "no release" condition of the merge exception above for this one tag. Q1 and Q2 passed before the release. Executing and recording Q3 to Q6 stays open work, and any regression they reveal is a release blocker for the next tag.
+
 ## Revisions
 
 ### Revision: Implementation Sync 2026-10-17 [Sync: review-fixes-pass-2]
