@@ -77,8 +77,12 @@ public class OpenAICompatibleProvider: AIProvider {
     if httpResponse.statusCode != 200 {
       // A 400 that names `temperature` or `reasoning_effort` in `error.param`
       // is classified so the engine can resend without it (specs/010, US3).
+      // Only a plausible value is dropped: a hand-edited typo (temperature 5,
+      // effort "ultra") keeps today's clear 400 instead of a run that quietly
+      // succeeds with different settings.
       if httpResponse.statusCode == 400,
-        let parameter = Self.extractRejectedParameter(from: data)
+        let parameter = Self.extractRejectedParameter(from: data),
+        Self.isPlausibleValue(of: parameter, in: request)
       {
         throw ProviderError.parameterRejected(
           parameter, statusCode: 400, message: Self.extractErrorMessage(from: data))
@@ -201,6 +205,24 @@ public class OpenAICompatibleProvider: AIProvider {
       return .reasoning
     default:
       return nil
+    }
+  }
+
+  /// Whether the value `request` sent for `parameter` is one a model could
+  /// legitimately accept: temperature within 0.0 to 2.0, or a reasoning level
+  /// from the OpenAI value list. A rejection of such a value means "this model
+  /// does not take it", which dropping fixes; a rejection of anything else is
+  /// most likely a typo the user must see. Pure logic, unit-tested.
+  static func isPlausibleValue(of parameter: DroppableParameter, in request: TransformRequest)
+    -> Bool
+  {
+    switch parameter {
+    case .temperature:
+      guard let temperature = request.temperature else { return false }
+      return (0.0...2.0).contains(temperature)
+    case .reasoning:
+      guard case .level(let level) = request.reasoning else { return false }
+      return ModelProfiles.reasoningValues[.openAICompatible]?.contains(level) ?? false
     }
   }
 

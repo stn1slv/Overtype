@@ -161,26 +161,70 @@ final class GenerationParameterResolverTests: XCTestCase {
     XCTAssertTrue(resolved.withheldOverrides.isEmpty)
   }
 
+  private let key = ParameterRejectionMemory.Key(
+    providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-x")
+
+  private func remembered(
+    _ memory: ParameterRejectionMemory, key: ParameterRejectionMemory.Key,
+    model: String = "gpt-x", temperature: Double? = 0, reasoning: String? = nil
+  ) -> ResolvedGenerationParameters {
+    GenerationParameterResolver.resolve(
+      kind: .openAICompatible, model: model, temperatureOverride: temperature,
+      reasoningOverride: reasoning, memory: memory, key: key)
+  }
+
   func testRejectionMemoryIsIsolatedPerProviderBaseURLAndModel() {
     let memory = ParameterRejectionMemory()
-    let key = ParameterRejectionMemory.Key(
-      providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-x")
-    memory.record(.temperature, for: key)
-    memory.record(.temperature, for: key)
+    memory.record(.temperature, value: "0.0", for: key)
 
-    XCTAssertEqual(memory.rejections(for: key), [.temperature])
-    XCTAssertTrue(
-      memory.rejections(
-        for: .init(providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-y")
-      ).isEmpty)
-    XCTAssertTrue(
-      memory.rejections(
-        for: .init(providerID: "openai", baseURL: "https://proxy.example/v1", model: "gpt-x")
-      ).isEmpty)
-    XCTAssertTrue(
-      memory.rejections(
-        for: .init(providerID: "other", baseURL: "https://api.openai.com/v1", model: "gpt-x")
-      ).isEmpty)
+    XCTAssertNil(remembered(memory, key: key).temperature)
+    for other in [
+      ParameterRejectionMemory.Key(
+        providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-y"),
+      ParameterRejectionMemory.Key(
+        providerID: "openai", baseURL: "https://proxy.example/v1", model: "gpt-x"),
+      ParameterRejectionMemory.Key(
+        providerID: "other", baseURL: "https://api.openai.com/v1", model: "gpt-x"),
+    ] {
+      XCTAssertEqual(remembered(memory, key: other).temperature, 0, "\(other)")
+    }
+  }
+
+  func testChangingARejectedValueSendsItAgain() {
+    // Review follow-up: a fixed value must not stay withheld until restart.
+    let memory = ParameterRejectionMemory()
+    memory.record(.temperature, value: "0.0", for: key)
+    memory.record(.reasoning, value: "low", for: key)
+
+    let same = remembered(memory, key: key, temperature: 0, reasoning: "low")
+    XCTAssertNil(same.temperature)
+    XCTAssertNil(same.reasoning)
+
+    let changed = remembered(memory, key: key, temperature: 0.5, reasoning: "high")
+    XCTAssertEqual(changed.temperature, 0.5)
+    XCTAssertEqual(changed.reasoning, .level("high"))
+  }
+
+  func testCaptionDropsAnAutomaticValueTheProviderRejected() {
+    // Review follow-up: "Automatic (none)" must not be shown once `none` was
+    // rejected this session.
+    let memory = ParameterRejectionMemory()
+    let lunaKey = ParameterRejectionMemory.Key(
+      providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-6-luna")
+    memory.record(.reasoning, value: "none", for: lunaKey)
+    let resolved = remembered(memory, key: lunaKey, model: "gpt-6-luna", temperature: nil)
+    XCTAssertNil(resolved.reasoning)
+    XCTAssertNil(resolved.automaticReasoning)
+  }
+
+  func testWireValues() {
+    XCTAssertEqual(
+      ParameterRejectionMemory.wireValue(of: .temperature, temperature: 0, reasoning: nil), "0.0")
+    XCTAssertEqual(
+      ParameterRejectionMemory.wireValue(
+        of: .reasoning, temperature: nil, reasoning: .thinkingBudget(0)), "budget:0")
+    XCTAssertNil(
+      ParameterRejectionMemory.wireValue(of: .reasoning, temperature: 1, reasoning: nil))
   }
 
   // MARK: - TransformRequest.removing

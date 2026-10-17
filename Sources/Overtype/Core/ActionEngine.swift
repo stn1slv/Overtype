@@ -59,9 +59,17 @@ public class ActionEngine {
     if let providerConfig {
       let resolved = GenerationParameterResolver.resolve(
         kind: providerConfig.kind, model: model, temperatureOverride: action.temperature,
-        reasoningOverride: action.reasoningEffort,
-        learnedRejections: ParameterRejectionMemory.shared.rejections(for: rejectionKey))
+        reasoningOverride: action.reasoningEffort, memory: ParameterRejectionMemory.shared,
+        key: rejectionKey)
       parameters = (resolved.temperature, resolved.reasoning)
+      // An override the user set but this run will not send must not vanish
+      // silently (Principle VI): name the parameter and the reason, never the
+      // value. The editor shows the same reasons before the run.
+      for withheld in resolved.withheldOverrides {
+        Logger.shared.log(
+          "Action '\(action.title)': \(withheld.parameter.rawValue) override not sent "
+            + "(\(withheld.reason)) for model \(model).", level: .warning)
+      }
     } else {
       // Without a provider record there is no kind to resolve against; send
       // exactly what the action sets, as for a model without a profile.
@@ -116,7 +124,16 @@ public class ActionEngine {
         let rawResponse = try await Self.transformWithRetry(
           provider: provider, request: request, retryDelaySeconds: retryDelaySeconds,
           showProgress: showProgress,
-          recordRejection: { ParameterRejectionMemory.shared.record($0, for: rejectionKey) })
+          recordRejection: { parameter in
+            // A drop only removes parameters, so the rejected value is the one
+            // this run started with.
+            guard
+              let value = ParameterRejectionMemory.wireValue(
+                of: parameter, temperature: parameters.temperature,
+                reasoning: parameters.reasoning)
+            else { return }
+            ParameterRejectionMemory.shared.record(parameter, value: value, for: rejectionKey)
+          })
 
         try Task.checkCancellation()
 

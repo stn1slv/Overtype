@@ -20,7 +20,9 @@ public enum DroppableParameter: String, Equatable, Hashable, CaseIterable {
 /// Parameters a provider rejected during this app session, so later runs skip
 /// them from the first request (specs/010 FR-012). In memory only: a wrong
 /// rule must not outlive the process (research R7). Keyed by provider id, base
-/// URL and model, so a changed model or endpoint starts clean. Runs execute in
+/// URL and model, so a changed model or endpoint starts clean, and each entry
+/// remembers the rejected VALUE: once the user changes it, the new value is
+/// sent again instead of staying withheld until the app quits. Runs execute in
 /// a `Task`, so access is serialized with a lock; the methods are synchronous,
 /// which keeps the lock out of async contexts.
 final class ParameterRejectionMemory: @unchecked Sendable {
@@ -34,18 +36,49 @@ final class ParameterRejectionMemory: @unchecked Sendable {
   static let shared = ParameterRejectionMemory()
 
   private let lock = NSLock()
-  private var rejected: [Key: Set<DroppableParameter>] = [:]
+  private var rejected: [Key: [DroppableParameter: String]] = [:]
 
-  func rejections(for key: Key) -> Set<DroppableParameter> {
+  func record(_ parameter: DroppableParameter, value: String, for key: Key) {
     lock.lock()
     defer { lock.unlock() }
-    return rejected[key] ?? []
+    rejected[key, default: [:]][parameter] = value
   }
 
-  func record(_ parameter: DroppableParameter, for key: Key) {
+  /// The parameters whose remembered rejected value is exactly the value
+  /// `resolved` would send now.
+  func learnedRejections(
+    for key: Key, matching resolved: ResolvedGenerationParameters
+  ) -> Set<DroppableParameter> {
     lock.lock()
-    defer { lock.unlock() }
-    rejected[key, default: []].insert(parameter)
+    let stored = rejected[key] ?? [:]
+    lock.unlock()
+    return Set(
+      DroppableParameter.allCases.filter { parameter in
+        guard
+          let value = Self.wireValue(
+            of: parameter, temperature: resolved.temperature, reasoning: resolved.reasoning)
+        else { return false }
+        return stored[parameter] == value
+      })
+  }
+
+  /// A comparable form of the value a request carries for `parameter`.
+  static func wireValue(
+    of parameter: DroppableParameter, temperature: Double?, reasoning: ReasoningSetting?
+  ) -> String? {
+    switch parameter {
+    case .temperature:
+      return temperature.map { "\($0)" }
+    case .reasoning:
+      switch reasoning {
+      case .level(let level):
+        return level
+      case .thinkingBudget(let budget):
+        return "budget:\(budget)"
+      case nil:
+        return nil
+      }
+    }
   }
 }
 
@@ -109,7 +142,11 @@ enum GenerationParameterResolver {
     } else {
       reasoning = automatic
     }
+    // What the editor shows for "Automatic": nothing once the provider has
+    // rejected that very value this session.
+    var automaticCaption = automatic
     if learnedRejections.contains(.reasoning), reasoning != nil {
+      if reasoning == automatic { automaticCaption = nil }
       if reasoningOverride != nil, !withheld.contains(where: { $0.parameter == .reasoning }) {
         withheld.append(WithheldOverride(parameter: .reasoning, reason: .learnedRejection))
       }
@@ -130,8 +167,26 @@ enum GenerationParameterResolver {
     }
 
     return ResolvedGenerationParameters(
-      temperature: temperature, reasoning: reasoning, automaticReasoning: automatic,
+      temperature: temperature, reasoning: reasoning, automaticReasoning: automaticCaption,
       withheldOverrides: withheld)
+  }
+
+  /// `resolve`, with the session's learned rejections applied: a parameter is
+  /// treated as rejected only when the value this run would send is the value
+  /// the provider rejected. `ActionEngine.run` and the Actions editor both use
+  /// this, so their results stay identical.
+  static func resolve(
+    kind: ProviderKind, model: String, temperatureOverride: Double?, reasoningOverride: String?,
+    memory: ParameterRejectionMemory, key: ParameterRejectionMemory.Key
+  ) -> ResolvedGenerationParameters {
+    let unadjusted = resolve(
+      kind: kind, model: model, temperatureOverride: temperatureOverride,
+      reasoningOverride: reasoningOverride)
+    let learned = memory.learnedRejections(for: key, matching: unadjusted)
+    guard !learned.isEmpty else { return unadjusted }
+    return resolve(
+      kind: kind, model: model, temperatureOverride: temperatureOverride,
+      reasoningOverride: reasoningOverride, learnedRejections: learned)
   }
 
   private static func preferredSetting(of profile: ModelProfile?) -> ReasoningSetting? {

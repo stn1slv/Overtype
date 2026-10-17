@@ -239,8 +239,17 @@ public struct ActionsTab: View {
     return GenerationParameterResolver.resolve(
       kind: provider.kind, model: effectiveModel,
       temperatureOverride: temperatureIsAutomatic ? nil : temperature,
-      reasoningOverride: reasoningEffort.isEmpty ? nil : reasoningEffort,
-      learnedRejections: ParameterRejectionMemory.shared.rejections(for: key))
+      reasoningOverride: reasoningOverrideToSave, memory: ParameterRejectionMemory.shared,
+      key: key)
+  }
+
+  /// The reasoning value the form would save. A kind without reasoning values
+  /// hides the picker, so a value left over from another provider (or hand
+  /// edited for Ollama) is dropped rather than stored where the user cannot
+  /// see or change it.
+  private var reasoningOverrideToSave: String? {
+    guard reasoningOptions != nil, !reasoningEffort.isEmpty else { return nil }
+    return reasoningEffort
   }
 
   private var automaticReasoningLabel: String {
@@ -263,9 +272,7 @@ public struct ActionsTab: View {
       case .providerSaysRemove:
         return "\(name) will not be sent: the provider says to leave it unset for this model."
       case .unsupportedValue:
-        return
-          "\(name) will not be sent: this model does not support that value, "
-          + "so Automatic is used."
+        return "\(name) will not be sent: this model does not support that value."
       case .providerIgnores:
         return "\(name) will not be sent: this provider does not use it."
       case .learnedRejection:
@@ -364,7 +371,7 @@ public struct ActionsTab: View {
         systemPrompt: systemPrompt,
         userPromptTemplate: userPromptTemplate,
         temperature: temperatureIsAutomatic ? nil : temperature,
-        reasoningEffort: reasoningEffort.isEmpty ? nil : reasoningEffort,
+        reasoningEffort: reasoningOverrideToSave,
         maxInputCharacters: maxInputCharacters,
         allowNewlines: allowNewlines,
         writeStrategy: writeStrategy

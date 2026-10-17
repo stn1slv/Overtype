@@ -132,9 +132,9 @@ You do not need to know which parameters a model accepts. Overtype ships built-i
 Advanced users can override either setting per action, in the Actions editor or in `config.json`:
 
 - `"temperature"`: a number from 0.0 to 2.0. Leave the key out for Automatic. Overtype does not send it to a model that rejects it, or that the provider says should not get one (for example Gemini 3.x), and the editor tells you when that happens.
-- `"reasoningEffort"`: the provider's own value, passed through unchanged: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` for OpenAI; `low` to `max` for Anthropic; `minimal` to `high` for Gemini. Leave the key out for Automatic. Ollama does not use it.
+- `"reasoningEffort"`: the provider's own value: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` for OpenAI; `low` to `max` for Anthropic; `minimal` to `high` for Gemini. Leave the key out for Automatic. For a model Overtype has a profile for, a value the model does not support is not sent and Automatic applies instead; Gemini 2.5 models take a thinking budget rather than a level, so a text value is never sent to them. For other models the value is sent as written. Ollama does not use it, and the editor does not save one for it.
 
-For an OpenAI model that Overtype has no profile for, Overtype sends only what the action sets. If the API rejects `temperature` or `reasoning_effort` by name, Overtype retries once without it (the HUD shows "Retrying...") and skips it for that model until you quit the app.
+For an OpenAI model that Overtype has no profile for, Overtype sends only what the action sets. If the API rejects `temperature` or `reasoning_effort` by name and the value was a valid one (temperature 0.0 to 2.0, or an effort from the list above), Overtype retries once without it (the HUD shows "Retrying...") and skips that value for that model until you quit the app; changing the value tries it again. A rejected value outside those ranges, such as a typo, is shown as the API error instead.
 
 ### Using Google Gemini
 

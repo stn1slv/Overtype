@@ -48,6 +48,11 @@ enum ModelProfiles {
   /// Reasoning values the Actions editor offers after "Automatic" (FR-022).
   /// A kind without an entry takes no reasoning setting at all (Ollama: its
   /// `think` option is rejected by models that lack it, feature 008).
+  ///
+  /// OpenAI's list keeps `minimal` although no profiled GPT-6 model supports
+  /// it: earlier OpenAI reasoning models without a profile do, and for those
+  /// the override is sent as written. On a profiled model the editor warns
+  /// and Automatic is used instead.
   static let reasoningValues: [ProviderKind: [String]] = [
     .openAICompatible: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
     .anthropic: ["low", "medium", "high", "xhigh", "max"],
@@ -108,7 +113,9 @@ enum ModelProfiles {
 
   /// OpenAI GPT-6 family (research R1). The guide says to remove `temperature`
   /// "when reasoning effort is not `none`"; that Luna and Sol accept it AT
-  /// `none` is inferred, confirmed by the quickstart Q1 diagnostic run. Astra
+  /// `none` is INFERRED, not stated, and still pending the quickstart Q1
+  /// diagnostic run (tasks T047). If Q1 shows a 400, change both rules to
+  /// `.rejected`; until then the OpenAI fallback drops the parameter. Astra
   /// and 6.1 Sol do not support `none`, so they never take a temperature.
   private static let openAI: [ModelProfile] = {
     let withNone = ["none", "low", "medium", "high", "xhigh", "max"]

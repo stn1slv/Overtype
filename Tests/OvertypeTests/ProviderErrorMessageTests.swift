@@ -62,6 +62,29 @@ final class ProviderErrorMessageTests: XCTestCase {
     XCTAssertNil(OpenAICompatibleProvider.extractRejectedParameter(from: data("not json")))
   }
 
+  func testOnlyPlausibleValuesAreDroppable() {
+    // Review follow-up: a typo keeps its clear 400 instead of being dropped.
+    func request(_ temperature: Double?, _ reasoning: ReasoningSetting?) -> TransformRequest {
+      TransformRequest(
+        text: "t", systemPrompt: "s", userPromptTemplate: "{{text}}", model: "m",
+        temperature: temperature, reasoning: reasoning)
+    }
+    XCTAssertTrue(
+      OpenAICompatibleProvider.isPlausibleValue(of: .temperature, in: request(0, nil)))
+    XCTAssertTrue(
+      OpenAICompatibleProvider.isPlausibleValue(of: .temperature, in: request(2, nil)))
+    XCTAssertFalse(
+      OpenAICompatibleProvider.isPlausibleValue(of: .temperature, in: request(5, nil)))
+    XCTAssertFalse(
+      OpenAICompatibleProvider.isPlausibleValue(of: .temperature, in: request(nil, nil)))
+    XCTAssertTrue(
+      OpenAICompatibleProvider.isPlausibleValue(of: .reasoning, in: request(nil, .level("none"))))
+    XCTAssertFalse(
+      OpenAICompatibleProvider.isPlausibleValue(of: .reasoning, in: request(nil, .level("ultra"))))
+    XCTAssertFalse(
+      OpenAICompatibleProvider.isPlausibleValue(of: .reasoning, in: request(nil, nil)))
+  }
+
   func testLongRawBodyIsTruncated() {
     let body = String(repeating: "x", count: 500)
     let result = OpenAICompatibleProvider.extractErrorMessage(from: data(body))
