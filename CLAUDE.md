@@ -143,3 +143,29 @@ executed and recorded.
 
 Force-unwrapping is forbidden except for unavoidable Core Foundation casts, each
 of which must carry a comment.
+
+## Project Structure
+
+- `Sources/Overtype/Providers/ModelProfiles.swift`: built-in model profiles for OpenAI, Anthropic and Gemini, the dated-snapshot matching rule, and per-kind dictionaries (editor reasoning values, suggested default model, kinds without temperature).
+- `Sources/Overtype/Providers/GenerationParameters.swift`: `ReasoningSetting`, `DroppableParameter`, the pure `GenerationParameterResolver` (shared by `ActionEngine.run` and the Actions editor), and the in-memory `ParameterRejectionMemory`.
+
+## Recent Changes
+
+- specs/010-model-aware-parameters: model-aware temperature and reasoning effort. Built-in profiles send each model only what it accepts and its fastest reasoning level; actions have optional `temperature` and `reasoningEffort` ("Automatic" when absent); the OpenAI provider retries once without a rejected parameter; `gpt-6-luna` is the default OpenAI model.
+
+## Known Issues & Gotchas
+
+### ⚠️ OpenAI model pages list effort values the API rejects
+**Issue:** The GPT-6 model pages list reasoning effort `max`, but Chat Completions rejects it for all four GPT-6 models.
+**Root Cause:** The documentation and the endpoint Overtype calls disagree; each 400 lists the values actually accepted.
+**Prevention Rule:** Take profile values from a recorded diagnostic run against the live API (`docs/compatibility.md`), not from model pages alone.
+
+### ⚠️ Only OpenAI names a rejected parameter
+**Issue:** The adaptive "drop and retry" fallback cannot work for Anthropic or Gemini.
+**Root Cause:** OpenAI's 400 carries `error.param`; Anthropic's error body has only `type` and `message`, and Google documents no such field.
+**Prevention Rule:** Never detect a rejected parameter by matching error message text; keep the fallback OpenAI-only and fix other providers through their profiles.
+
+### ⚠️ Gemini thinking parameters differ by generation
+**Issue:** Sending `thinkingLevel` and `thinkingBudget` together returns a 400, and `minimal` errors on Gemini 3.8 Flash and 4 Argon.
+**Root Cause:** Gemini 3.x and 4 take `thinkingLevel`; Gemini 2.5 takes `thinkingBudget`.
+**Prevention Rule:** Represent the reasoning setting as one `ReasoningSetting` value so both can never be sent, and take supported levels from the model's profile.

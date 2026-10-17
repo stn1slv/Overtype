@@ -2,6 +2,25 @@
 
 ## Merged Features Log
 
+### Model-Aware Generation Parameters (archived 2026-10-17)
+**Branch:** 010-model-aware-parameters
+**Spec:** [specs/010-model-aware-parameters/spec.md](../../specs/010-model-aware-parameters/spec.md)
+
+_Note: FR/SC IDs renumbered to FR-041 to FR-068 and SC-024 to SC-029 in memory `spec.md`; new assumptions are AS-006 to AS-014 (existing ones backfilled as AS-001 to AS-005)._
+
+**What was added:**
+- US1 (P1): current OpenAI, Anthropic and Gemini models work with no extra setup; built-in profiles send each model only what it accepts and the fastest reasoning level it supports (fixes the `gpt-6-luna` temperature 400).
+- US2 (P1): `gpt-6-luna` is the default for the seeded OpenAI provider and for a new OpenAI provider in Settings; configured models are never changed.
+- US3 (P1): unprofiled OpenAI models adapt: a 400 naming `temperature` or `reasoning_effort` with a plausible value is retried once without it and the rejected value is remembered for the session.
+- US4 (P2): the Actions editor offers "Automatic" or an override for temperature and reasoning effort, shows what Automatic sends, and warns when an override will not be sent.
+
+**New Components:**
+- `Providers/ModelProfiles.swift` (profile table, snapshot matching, per-kind dictionaries) and `Providers/GenerationParameters.swift` (`ReasoningSetting`, `DroppableParameter`, `GenerationParameterResolver`, `ParameterRejectionMemory`).
+- `ProviderError.parameterRejected`; optional `ActionConfig.temperature` and new `reasoningEffort`; pure request-body builders in every provider; the drop loop in `ActionEngine.transformWithRetry`.
+- Tests: `ModelProfilesTests`, `GenerationParameterResolverTests`, `ActionParameterValidationTests`, plus extended provider, config, error and retry suites.
+
+**Tasks Completed:** 49/51 tasks (T042 and T048, the remaining manual acceptance runs Q3 to Q6, are open under a dated merge exception recorded in the feature's plan; they gate release, not archival).
+
 ### Reliable Selection Reading (Dormant Accessibility Trees) — 2026-08-04
 **Branch:** 005-teams-ax-recovery
 **Spec:** specs/005-teams-ax-recovery
