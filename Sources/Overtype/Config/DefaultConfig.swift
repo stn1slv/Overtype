@@ -17,7 +17,7 @@ public struct DefaultConfig {
           "id": "openai",
           "kind": "openai",
           "baseURL": "https://api.openai.com/v1",
-          "defaultModel": "gpt-5.4-nano",
+          "defaultModel": "gpt-6-luna",
           "timeoutSeconds": 30.0,
           "retryDelaySeconds": 0.5,
           "keychainKey": "overtype-openai-key"
@@ -33,7 +33,6 @@ public struct DefaultConfig {
           "model": null,
           "systemPrompt": "You are a proofreader. Fix grammar, spelling, and punctuation. Do not change the meaning or tone. Output ONLY the corrected text, no quotes or conversational text.",
           "userPromptTemplate": "{{text}}",
-          "temperature": 0.0,
           "maxInputCharacters": 5000,
           "allowNewlines": false,
           "writeStrategy": "typing"

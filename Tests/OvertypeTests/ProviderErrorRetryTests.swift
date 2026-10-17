@@ -91,6 +91,16 @@ final class ProviderErrorRetryTests: XCTestCase {
 
   // MARK: - Deterministic failures are not retried
 
+  func testRejectedParameterIsNotTransientlyRetried() {
+    // specs/010: a rejected parameter is handled by the drop-and-resend branch
+    // of transformWithRetry, never by the transient retry (an identical resend
+    // would be rejected identically).
+    for parameter in DroppableParameter.allCases {
+      XCTAssertFalse(
+        ProviderError.parameterRejected(parameter, statusCode: 400, message: "x").isRetryable)
+    }
+  }
+
   func testClientErrorsAreNotRetryable() {
     // A repeat of the identical request is rejected identically, so retrying
     // only delays the error. 429 is the deliberate exception, covered above.

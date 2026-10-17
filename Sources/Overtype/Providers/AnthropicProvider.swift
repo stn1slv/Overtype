@@ -94,11 +94,16 @@ public class AnthropicProvider: AIProvider {
     let userPrompt = request.userPromptTemplate.replacingOccurrences(
       of: "{{text}}", with: request.text)
 
+    var effort: String?
+    if case .level(let level) = request.reasoning {
+      effort = level
+    }
     urlRequest.httpBody = try JSONSerialization.data(
       withJSONObject: Self.requestBody(
         model: request.model,
         systemPrompt: request.systemPrompt,
-        userPrompt: userPrompt))
+        userPrompt: userPrompt,
+        effort: effort))
 
     let data: Data
     let response: URLResponse
@@ -142,16 +147,24 @@ public class AnthropicProvider: AIProvider {
   /// conditionally would mean a per-model allow-list that goes stale on every
   /// release and turns into a hard request-validation failure mid-run, so it is
   /// dropped for all Anthropic requests. The action-level setting still applies
-  /// to the OpenAI and Gemini providers.
+  /// to the OpenAI-compatible, Gemini and Ollama providers. (specs/010 kept
+  /// this rule: the built-in model profiles could now name the models that
+  /// still accept it, but the latency gain for Anthropic comes from effort.)
   ///
-  /// For the same reason no `thinking` or `effort` field is sent either: the
-  /// accepted values differ per model (some reject "disabled", others cap it by
-  /// effort level). Each model's own default applies, `maxTokens` is sized to
-  /// leave room for it, and `extractText` guarantees any reasoning content that
-  /// does come back is never written to the user's document.
-  static func requestBody(model: String, systemPrompt: String, userPrompt: String) -> [String: Any]
-  {
-    return [
+  /// `effort` (`output_config.effort`) IS sent when the resolver produced one:
+  /// specs/010 profiles the models listed on Anthropic's Effort page and picks
+  /// the lowest level each supports, so the model thinks less while the user
+  /// waits. A model without a profile gets it only when the action sets it.
+  ///
+  /// No `thinking` field is sent: the accepted values differ per model (some
+  /// reject "disabled", others reject it above a given effort level), and
+  /// effort already lowers how much the model thinks. `maxTokens` is sized to
+  /// leave room for thinking, and `extractText` guarantees any reasoning
+  /// content that does come back is never written to the user's document.
+  static func requestBody(
+    model: String, systemPrompt: String, userPrompt: String, effort: String? = nil
+  ) -> [String: Any] {
+    var body: [String: Any] = [
       "model": model,
       "max_tokens": maxTokens,
       // `system` is a top-level field. A {"role": "system"} entry inside
@@ -159,6 +172,10 @@ public class AnthropicProvider: AIProvider {
       "system": systemPrompt,
       "messages": [["role": "user", "content": userPrompt]],
     ]
+    if let effort {
+      body["output_config"] = ["effort": effort]
+    }
+    return body
   }
 
   /// Builds `<base>messages`.

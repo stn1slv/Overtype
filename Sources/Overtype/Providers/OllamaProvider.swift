@@ -474,7 +474,9 @@ public class OllamaProvider: AIProvider {
   /// because its newer models reject the field outright with HTTP 400, whereas
   /// Ollama applies `options` itself as generation parameters before the model
   /// sees them, so every model accepts it. No per-model allow-list risk exists
-  /// here, so the action's setting is honoured (research R4).
+  /// here, so the action's setting is honoured (research R4). When the action
+  /// is on "Automatic" (`nil`, specs/010), it is left out and the model's own
+  /// default applies.
   ///
   /// Fields NOT sent, each for a recorded reason: `think` (models that do not
   /// support it reject the whole request — the same trap feature 007 hit with
@@ -484,8 +486,12 @@ public class OllamaProvider: AIProvider {
   /// text out only). `OllamaProviderTests` asserts the exact key set so none of
   /// these can reappear by accident.
   static func requestBody(
-    model: String, systemPrompt: String, userPrompt: String, temperature: Double
+    model: String, systemPrompt: String, userPrompt: String, temperature: Double?
   ) -> [String: Any] {
+    var options: [String: Any] = ["num_ctx": contextWindowTokens]
+    if let temperature {
+      options["temperature"] = temperature
+    }
     return [
       "model": model,
       "messages": [
@@ -493,10 +499,7 @@ public class OllamaProvider: AIProvider {
         ["role": "user", "content": userPrompt],
       ],
       "stream": false,
-      "options": [
-        "temperature": temperature,
-        "num_ctx": contextWindowTokens,
-      ],
+      "options": options,
     ]
   }
 

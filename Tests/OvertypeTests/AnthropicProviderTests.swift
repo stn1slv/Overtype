@@ -190,6 +190,18 @@ final class AnthropicProviderTests: XCTestCase {
     XCTAssertNil(body["output_config"])
   }
 
+  func testRequestBodyCarriesEffortWhenResolved() {
+    // specs/010: profiled models get `output_config.effort`; still no
+    // temperature and no `thinking`.
+    let body = AnthropicProvider.requestBody(
+      model: "claude-haiku-5-5", systemPrompt: "sys", userPrompt: "user", effort: "low")
+    XCTAssertEqual((body["output_config"] as? [String: Any])?["effort"] as? String, "low")
+    XCTAssertNil(body["temperature"])
+    XCTAssertNil(body["thinking"])
+    XCTAssertEqual(
+      Set(body.keys), ["model", "max_tokens", "system", "messages", "output_config"])
+  }
+
   func testRequestBodyPutsSystemPromptAtTopLevel() {
     // A {"role": "system"} entry inside `messages` is a validation error on this
     // API; the system prompt must be a sibling of `messages`.

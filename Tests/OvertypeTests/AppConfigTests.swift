@@ -24,6 +24,23 @@ final class AppConfigTests: XCTestCase {
     }
   }
 
+  func testSeededConfigUsesGPT6LunaOnAutomatic() throws {
+    // specs/010 FR-017: new installs start on gpt-6-luna with both generation
+    // settings on "Automatic".
+    let config = try XCTUnwrap(DefaultConfig.defaultConfig)
+    XCTAssertEqual(config.providers.first?.defaultModel, "gpt-6-luna")
+    XCTAssertNil(config.actions.first?.temperature)
+    XCTAssertNil(config.actions.first?.reasoningEffort)
+  }
+
+  func testSuggestedDefaultModelPerKind() {
+    // FR-018: only the OpenAI kind has a suggestion; others start empty.
+    XCTAssertEqual(ModelProfiles.suggestedDefaultModel[.openAICompatible], "gpt-6-luna")
+    XCTAssertNil(ModelProfiles.suggestedDefaultModel[.anthropic])
+    XCTAssertNil(ModelProfiles.suggestedDefaultModel[.gemini])
+    XCTAssertNil(ModelProfiles.suggestedDefaultModel[.ollama])
+  }
+
   func testGeminiProviderConfigDecodes() {
     let json = #"""
       {
@@ -156,7 +173,9 @@ final class AppConfigTests: XCTestCase {
     XCTAssertTrue(action.enabled)
     XCTAssertNil(action.shortcut)
     XCTAssertNil(action.model)
-    XCTAssertEqual(action.temperature, 0.0)
+    // A missing temperature means "Automatic" (specs/010), no longer 0.0.
+    XCTAssertNil(action.temperature)
+    XCTAssertNil(action.reasoningEffort)
     XCTAssertEqual(action.maxInputCharacters, 5000)
     XCTAssertFalse(action.allowNewlines)
     XCTAssertEqual(action.writeStrategy, .typing)
@@ -220,7 +239,7 @@ final class AppConfigTests: XCTestCase {
     XCTAssertEqual(config.global.typingSpeedMultiplier, 2.0)
   }
 
-  func testWrongTypedTemperatureFallsBackToDefault() throws {
+  func testWrongTypedTemperatureFallsBackToAutomatic() throws {
     let json = #"""
       {
         "id": "a1", "title": "T", "providerID": "p1",
@@ -228,8 +247,91 @@ final class AppConfigTests: XCTestCase {
         "temperature": "hot"
       }
       """#
-    let action = try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8))
-    XCTAssertEqual(action.temperature, 0.0)
+    let issues = ConfigDecodingIssues()
+    let decoder = JSONDecoder()
+    ConfigDecodingIssues.attach(issues, to: decoder)
+    let action = try decoder.decode(ActionConfig.self, from: Data(json.utf8))
+    XCTAssertNil(action.temperature)
+    XCTAssertEqual(issues.issues.count, 1)
+    XCTAssertTrue(issues.issues[0].contains("temperature"))
+    XCTAssertTrue(issues.issues[0].contains("a1"))
+    XCTAssertFalse(issues.issues[0].contains("hot"))
+  }
+
+  // MARK: - Optional generation parameters (specs/010-model-aware-parameters)
+
+  private func decodeAction(extra: String) throws -> ActionConfig {
+    let json = """
+      {
+        "id": "a1", "title": "T", "providerID": "p1",
+        "systemPrompt": "s", "userPromptTemplate": "{{text}}"\(extra)
+      }
+      """
+    return try JSONDecoder().decode(ActionConfig.self, from: Data(json.utf8))
+  }
+
+  func testStoredTemperatureIsKept() throws {
+    // Configs written before specs/010 always stored a value; it stays the
+    // action's override.
+    XCTAssertEqual(try decodeAction(extra: #", "temperature": 0"#).temperature, 0)
+    XCTAssertEqual(try decodeAction(extra: #", "temperature": 0.7"#).temperature, 0.7)
+  }
+
+  func testNullTemperatureMeansAutomatic() throws {
+    XCTAssertNil(try decodeAction(extra: #", "temperature": null"#).temperature)
+  }
+
+  func testReasoningEffortDecodesAsText() throws {
+    XCTAssertEqual(
+      try decodeAction(extra: #", "reasoningEffort": "none""#).reasoningEffort, "none")
+    // Hand-edited values outside the editor's list pass through unchanged.
+    XCTAssertEqual(
+      try decodeAction(extra: #", "reasoningEffort": "ultra""#).reasoningEffort, "ultra")
+  }
+
+  func testReasoningEffortIsTrimmedAndBlankMeansAutomatic() throws {
+    XCTAssertEqual(
+      try decodeAction(extra: #", "reasoningEffort": "  low \n""#).reasoningEffort, "low")
+    XCTAssertNil(try decodeAction(extra: #", "reasoningEffort": "   ""#).reasoningEffort)
+    XCTAssertNil(try decodeAction(extra: #", "reasoningEffort": """#).reasoningEffort)
+  }
+
+  func testWrongTypedReasoningEffortFallsBackToAutomatic() throws {
+    let json = #"""
+      {
+        "id": "a1", "title": "T", "providerID": "p1",
+        "systemPrompt": "s", "userPromptTemplate": "{{text}}",
+        "reasoningEffort": 3
+      }
+      """#
+    let issues = ConfigDecodingIssues()
+    let decoder = JSONDecoder()
+    ConfigDecodingIssues.attach(issues, to: decoder)
+    let action = try decoder.decode(ActionConfig.self, from: Data(json.utf8))
+    XCTAssertNil(action.reasoningEffort)
+    XCTAssertEqual(issues.issues.count, 1)
+    XCTAssertTrue(issues.issues[0].contains("reasoningEffort"))
+    XCTAssertTrue(issues.issues[0].contains("a1"))
+  }
+
+  func testAutomaticParametersAreOmittedWhenEncoding() throws {
+    let action = ActionConfig(
+      id: "a1", title: "T", enabled: true, providerID: "p1", systemPrompt: "s",
+      userPromptTemplate: "{{text}}")
+    let data = try JSONEncoder().encode(action)
+    let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertNil(json["temperature"])
+    XCTAssertNil(json["reasoningEffort"])
+  }
+
+  func testSetParametersAreEncoded() throws {
+    let action = ActionConfig(
+      id: "a1", title: "T", enabled: true, providerID: "p1", systemPrompt: "s",
+      userPromptTemplate: "{{text}}", temperature: 0, reasoningEffort: "low")
+    let data = try JSONEncoder().encode(action)
+    let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(json["temperature"] as? Double, 0)
+    XCTAssertEqual(json["reasoningEffort"] as? String, "low")
   }
 
   func testWrongTypedBaseURLFallsBackToNil() throws {

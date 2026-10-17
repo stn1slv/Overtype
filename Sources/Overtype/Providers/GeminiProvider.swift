@@ -48,12 +48,12 @@ public class GeminiProvider: AIProvider {
     let userPrompt = request.userPromptTemplate.replacingOccurrences(
       of: "{{text}}", with: request.text)
 
-    let body: [String: Any] = [
-      "systemInstruction": ["parts": [["text": request.systemPrompt]]],
-      "contents": [["role": "user", "parts": [["text": userPrompt]]]],
-      "generationConfig": ["temperature": request.temperature],
-    ]
-    urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+    urlRequest.httpBody = try JSONSerialization.data(
+      withJSONObject: Self.requestBody(
+        systemPrompt: request.systemPrompt,
+        userPrompt: userPrompt,
+        temperature: request.temperature,
+        reasoning: request.reasoning))
 
     let data: Data
     let response: URLResponse
@@ -78,6 +78,43 @@ public class GeminiProvider: AIProvider {
     }
 
     return try Self.parseResponseText(from: data)
+  }
+
+  /// Builds the `generateContent` request body. Pure and `static` so the
+  /// presence and absence of each optional key is unit-tested.
+  ///
+  /// `generationConfig` is omitted entirely when it would be empty
+  /// (specs/010-model-aware-parameters, research R9): an empty object adds
+  /// nothing and is one more thing a server could reject.
+  ///
+  /// The reasoning setting becomes exactly one of `thinkingLevel` (Gemini 3.x
+  /// and 4) or `thinkingBudget` (Gemini 2.5): Google documents that sending
+  /// both in one request returns HTTP 400, and a single `ReasoningSetting`
+  /// value makes that combination unrepresentable.
+  static func requestBody(
+    systemPrompt: String, userPrompt: String, temperature: Double?,
+    reasoning: ReasoningSetting? = nil
+  ) -> [String: Any] {
+    var body: [String: Any] = [
+      "systemInstruction": ["parts": [["text": systemPrompt]]],
+      "contents": [["role": "user", "parts": [["text": userPrompt]]]],
+    ]
+    var generationConfig: [String: Any] = [:]
+    if let temperature {
+      generationConfig["temperature"] = temperature
+    }
+    switch reasoning {
+    case .level(let level):
+      generationConfig["thinkingConfig"] = ["thinkingLevel": level]
+    case .thinkingBudget(let budget):
+      generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
+    case nil:
+      break
+    }
+    if !generationConfig.isEmpty {
+      body["generationConfig"] = generationConfig
+    }
+    return body
   }
 
   /// Builds `<base>models/<model>:generateContent`. Constructed by string so the

@@ -52,16 +52,13 @@ public class OpenAICompatibleProvider: AIProvider {
     let userPrompt = request.userPromptTemplate.replacingOccurrences(
       of: "{{text}}", with: request.text)
 
-    let body: [String: Any] = [
-      "model": request.model,
-      "temperature": request.temperature,
-      "messages": [
-        ["role": "system", "content": request.systemPrompt],
-        ["role": "user", "content": userPrompt],
-      ],
-    ]
-
-    urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+    urlRequest.httpBody = try JSONSerialization.data(
+      withJSONObject: Self.requestBody(
+        model: request.model,
+        systemPrompt: request.systemPrompt,
+        userPrompt: userPrompt,
+        temperature: request.temperature,
+        reasoning: request.reasoning))
 
     let data: Data
     let response: URLResponse
@@ -78,6 +75,14 @@ public class OpenAICompatibleProvider: AIProvider {
     }
 
     if httpResponse.statusCode != 200 {
+      // A 400 that names `temperature` or `reasoning_effort` in `error.param`
+      // is classified so the engine can resend without it (specs/010, US3).
+      if httpResponse.statusCode == 400,
+        let parameter = Self.extractRejectedParameter(from: data)
+      {
+        throw ProviderError.parameterRejected(
+          parameter, statusCode: 400, message: Self.extractErrorMessage(from: data))
+      }
       // Surface the server's error message so distinct failures (401 bad key,
       // 429 rate limit, 500) are distinguishable instead of a generic string.
       throw ProviderError.apiError(
@@ -86,6 +91,38 @@ public class OpenAICompatibleProvider: AIProvider {
     }
 
     return try Self.parseResponseText(from: data)
+  }
+
+  /// Builds the chat-completions request body. Pure and `static` so the
+  /// presence and absence of each optional key is unit-tested.
+  ///
+  /// `temperature` is sent only when the resolver produced one: current OpenAI
+  /// reasoning models reject any non-default value with HTTP 400 unless
+  /// reasoning effort is `none` (specs/010-model-aware-parameters, research R1),
+  /// so "Automatic" must be able to leave it out entirely.
+  ///
+  /// `reasoning_effort` is sent only for a resolved level: older models and
+  /// other OpenAI-compatible servers may reject the field, so a model without
+  /// a profile gets it only when the action sets it. A thinking budget is a
+  /// Gemini-only form and is never produced for this kind.
+  static func requestBody(
+    model: String, systemPrompt: String, userPrompt: String, temperature: Double?,
+    reasoning: ReasoningSetting? = nil
+  ) -> [String: Any] {
+    var body: [String: Any] = [
+      "model": model,
+      "messages": [
+        ["role": "system", "content": systemPrompt],
+        ["role": "user", "content": userPrompt],
+      ],
+    ]
+    if let temperature {
+      body["temperature"] = temperature
+    }
+    if case .level(let effort) = reasoning {
+      body["reasoning_effort"] = effort
+    }
+    return body
   }
 
   /// Builds `<base>/chat/completions`. The `openai` kind has no default base
@@ -145,6 +182,26 @@ public class OpenAICompatibleProvider: AIProvider {
       throw ProviderError.emptyResponse
     }
     return text
+  }
+
+  /// The optional parameter a 400 body names in `error.param`, if Overtype may
+  /// drop it. Reads the structured field only, never the message text, which
+  /// is fragile and can echo submitted text (specs/010 FR-016). If OpenAI
+  /// omits `param` for a rejection, this returns nil and the fallback simply
+  /// never fires (research R2). Pure logic, unit-tested.
+  static func extractRejectedParameter(from data: Data) -> DroppableParameter? {
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let error = json["error"] as? [String: Any],
+      let param = error["param"] as? String
+    else { return nil }
+    switch param {
+    case "temperature":
+      return .temperature
+    case "reasoning_effort":
+      return .reasoning
+    default:
+      return nil
+    }
   }
 
   /// Best-effort extraction of an OpenAI-style `{ "error": { "message": ... } }`

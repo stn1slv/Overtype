@@ -41,7 +41,7 @@ By default, the provider configuration should look exactly like this:
     "id": "openai",
     "kind": "openai",
     "baseURL": "https://api.openai.com/v1",
-    "defaultModel": "gpt-4o-mini",
+    "defaultModel": "gpt-6-luna",
     "timeoutSeconds": 30.0,
     "retryDelaySeconds": 0.5,
     "keychainKey": "overtype-openai-key"

@@ -5,17 +5,38 @@ public struct TransformRequest {
   public let systemPrompt: String
   public let userPromptTemplate: String
   public let model: String
-  public let temperature: Double
+  /// `nil` means the request carries no temperature at all.
+  public let temperature: Double?
+  /// `nil` means the request carries no reasoning parameter at all.
+  public let reasoning: ReasoningSetting?
 
   public init(
     text: String, systemPrompt: String, userPromptTemplate: String, model: String,
-    temperature: Double
+    temperature: Double?, reasoning: ReasoningSetting? = nil
   ) {
     self.text = text
     self.systemPrompt = systemPrompt
     self.userPromptTemplate = userPromptTemplate
     self.model = model
     self.temperature = temperature
+    self.reasoning = reasoning
+  }
+
+  /// A copy without `parameter`, or `nil` when this request does not carry it
+  /// (so the caller knows a rejection of it cannot be fixed by dropping it).
+  public func removing(_ parameter: DroppableParameter) -> TransformRequest? {
+    switch parameter {
+    case .temperature:
+      guard temperature != nil else { return nil }
+      return TransformRequest(
+        text: text, systemPrompt: systemPrompt, userPromptTemplate: userPromptTemplate,
+        model: model, temperature: nil, reasoning: reasoning)
+    case .reasoning:
+      guard reasoning != nil else { return nil }
+      return TransformRequest(
+        text: text, systemPrompt: systemPrompt, userPromptTemplate: userPromptTemplate,
+        model: model, temperature: temperature, reasoning: nil)
+    }
   }
 }
 
@@ -53,9 +74,16 @@ public enum ProviderError: Error, LocalizedError {
   /// lose the end of the user's text, the same truncation class the Ollama
   /// prompt guard closes on the input side (009 review follow-up to H5).
   case outputTruncated
+  /// The provider rejected one optional parameter by name (HTTP 400 with an
+  /// OpenAI `error.param`). `ActionEngine.transformWithRetry` resends once
+  /// without it; when it cannot, the error surfaces as a plain `apiError`
+  /// (specs/010-model-aware-parameters, US3).
+  case parameterRejected(DroppableParameter, statusCode: Int, message: String)
 
   public var errorDescription: String? {
     switch self {
+    case .parameterRejected(_, let statusCode, let message):
+      return "API Error \(statusCode): \(message)"
     case .apiKeyMissing:
       return "API Key is missing from the Keychain."
     case .invalidURL:
@@ -155,6 +183,10 @@ public enum ProviderError: Error, LocalizedError {
       // 501 (Not Implemented) means the server will never serve this call.
       if statusCode == 408 || statusCode == 429 { return true }
       return (500...599).contains(statusCode) && statusCode != 501
+    case .parameterRejected:
+      // Handled by its own drop-and-resend branch in transformWithRetry: an
+      // identical resend would be rejected identically.
+      return false
     case .apiKeyMissing, .invalidURL, .invalidResponse, .cancelled, .contextChanged,
       .responseBlocked, .emptyResponse, .outputTruncated:
       // .outputTruncated: the same request produces the same token limit, so a
@@ -184,6 +216,8 @@ public enum ProviderError: Error, LocalizedError {
       return "network error"
     case .apiError(let statusCode, _):
       return "HTTP \(statusCode)"
+    case .parameterRejected(let parameter, let statusCode, _):
+      return "HTTP \(statusCode) (rejected parameter: \(parameter.rawValue))"
     case .apiKeyMissing:
       return "missing API key"
     case .invalidURL:

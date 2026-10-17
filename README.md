@@ -78,7 +78,7 @@ You can manage all your preferences, providers, actions, and global hotkeys dire
       "id": "openai",
       "kind": "openai",
       "baseURL": "https://api.openai.com/v1",
-      "defaultModel": "gpt-5.4-nano",
+      "defaultModel": "gpt-6-luna",
       "timeoutSeconds": 30.0,
       "retryDelaySeconds": 0.5,
       "keychainKey": "overtype-openai-key"
@@ -94,7 +94,6 @@ You can manage all your preferences, providers, actions, and global hotkeys dire
       "model": null,
       "systemPrompt": "You are a proofreader. Fix grammar, spelling, and punctuation...",
       "userPromptTemplate": "{{text}}",
-      "temperature": 0.0,
       "maxInputCharacters": 5000,
       "allowNewlines": false,
       "writeStrategy": "typing"
@@ -123,6 +122,19 @@ Because Overtype values privacy and security, API keys are never stored in your 
 Overtype resolves the AI model to use in the following order:
 1. **Action-level model**: If an action specifies a `"model"` key (e.g. `"model": "gpt-4o-mini"`), it is used. This allows you to use faster/cheaper models for simple tasks and heavier models for complex rewrites.
 2. **Provider-level default**: If the action omits the model, Overtype falls back to the `"defaultModel"` specified in the provider's configuration.
+
+New OpenAI providers start on `gpt-6-luna`, both in the shipped configuration and in **Settings → Providers → Add**. A model you already configured is never changed.
+
+### Temperature and reasoning effort ("Automatic")
+
+You do not need to know which parameters a model accepts. Overtype ships built-in profiles for current OpenAI, Anthropic and Gemini models and, with an action's settings on **Automatic** (the default), sends each model what it accepts, choosing the fastest reasoning level it supports, because Overtype rewrites text while you wait. For example, `gpt-6-luna` gets `reasoning_effort: "none"`, `claude-haiku-5-5` gets effort `low`, and `gemini-3.8-flash` gets thinking level `low`.
+
+Advanced users can override either setting per action, in the Actions editor or in `config.json`:
+
+- `"temperature"`: a number from 0.0 to 2.0. Leave the key out for Automatic. Overtype does not send it to a model that rejects it, or that the provider says should not get one (for example Gemini 3.x), and the editor tells you when that happens.
+- `"reasoningEffort"`: the provider's own value, passed through unchanged: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` for OpenAI; `low` to `max` for Anthropic; `minimal` to `high` for Gemini. Leave the key out for Automatic. Ollama does not use it.
+
+For an OpenAI model that Overtype has no profile for, Overtype sends only what the action sets. If the API rejects `temperature` or `reasoning_effort` by name, Overtype retries once without it (the HUD shows "Retrying...") and skips it for that model until you quit the app.
 
 ### Using Google Gemini
 
@@ -185,7 +197,7 @@ configuration directly. Either way, no rebuild is required.
    {
      "id": "anthropic",
      "kind": "anthropic",
-     "defaultModel": "claude-haiku-4-5",
+     "defaultModel": "claude-haiku-5-5",
      "timeoutSeconds": 30.0,
      "retryDelaySeconds": 0.5,
      "keychainKey": "overtype-anthropic-key"
@@ -195,9 +207,7 @@ configuration directly. Either way, no rebuild is required.
    The `"baseURL"` may be omitted; Overtype defaults to
    `https://api.anthropic.com/v1/`.
 
-   `claude-haiku-4-5` is recommended as the default because Overtype rewrites a
-   selection inline while you wait, so speed matters more than raw capability
-   here. Any Claude model works — set a heavier one per action if you want.
+   `claude-haiku-5-5` is recommended as the default because Overtype rewrites a selection inline while you wait, so speed matters more than raw capability here. On Automatic, Overtype sends it effort `low`. Any Claude model works; set a heavier one per action if you want.
 
 3. Store your key in the macOS Keychain under the exact `keychainKey` name.
    Adding the provider through Settings → Providers does this for you; the
@@ -224,12 +234,7 @@ configuration directly. Either way, no rebuild is required.
    sent in the `x-api-key` request header and never written to `config.json`,
    logs, or the URL.
 
-> **Note:** an action's `"temperature"` is **ignored** for Anthropic runs.
-> Newer Claude models (the Opus 4.7/4.8, Opus 5, Sonnet 5 and Fable 5
-> generation) reject that parameter with an HTTP 400. Older ones such as
-> `claude-haiku-4-5` still accept it, but Overtype never sends it to Anthropic
-> rather than maintaining a per-model list that would go stale on every release.
-> The setting still applies to OpenAI and Gemini providers.
+> **Note:** an action's `"temperature"` is **ignored** for Anthropic runs. The newest Claude models reject any non-default value with an HTTP 400, and Overtype gets its speed on Anthropic from effort instead, so it never sends a temperature to Anthropic. An action's `"reasoningEffort"` does apply.
 
 The shipped default configuration does not include an Anthropic provider, so a
 fresh install adds no extra provider or shortcut until you add the block above.
@@ -326,9 +331,7 @@ editing configuration directly. Either way, no rebuild is required.
 > again once the model is loaded, or raise the provider's time limit (the
 > Settings slider goes up to 300 seconds).
 
-> **Note:** unlike Anthropic, an action's `"temperature"` **is** sent to Ollama.
-> The service applies it itself as a generation option, so every model accepts
-> it.
+> **Note:** unlike Anthropic, an action's `"temperature"` **is** sent to Ollama when the action sets one. The service applies it itself as a generation option, so every model accepts it. On Automatic, no temperature is sent and the model's own default applies.
 
 The shipped default configuration does not include an Ollama provider, so a
 fresh install adds no extra provider or shortcut until you add the block above.

@@ -14,7 +14,12 @@ public struct ActionsTab: View {
   @State private var modelOverride = ""
   @State private var systemPrompt = ""
   @State private var userPromptTemplate = "{{text}}"
+  // specs/010-model-aware-parameters: both generation settings default to
+  // "Automatic"; the slider value and the picker value are overrides.
+  @State private var temperatureIsAutomatic = true
   @State private var temperature = 0.0
+  /// Empty means "Automatic".
+  @State private var reasoningEffort = ""
   @State private var maxInputCharacters = 5000
   @State private var allowNewlines = false
   @State private var writeStrategy: WriteStrategy = .typing
@@ -125,9 +130,36 @@ public struct ActionsTab: View {
 
               TextField("User Prompt Template", text: $userPromptTemplate)
 
-              HStack {
-                Text("Temperature: \(String(format: "%.1f", temperature))")
-                Slider(value: $temperature, in: 0.0...2.0, step: 0.1)
+              Toggle("Automatic temperature", isOn: $temperatureIsAutomatic)
+              if !temperatureIsAutomatic {
+                HStack {
+                  Text("Temperature: \(String(format: "%.1f", temperature))")
+                  Slider(value: $temperature, in: 0.0...2.0, step: 0.1)
+                }
+              }
+
+              if let options = reasoningOptions {
+                Picker("Reasoning Effort", selection: $reasoningEffort) {
+                  Text(automaticReasoningLabel).tag("")
+                  ForEach(options, id: \.self) { value in
+                    Text(value).tag(value)
+                  }
+                  // A hand-edited value outside the list stays selectable, so
+                  // opening and saving the action never changes it (FR-022).
+                  if !reasoningEffort.isEmpty && !options.contains(reasoningEffort) {
+                    Text("\(reasoningEffort) (custom)").tag(reasoningEffort)
+                  }
+                }
+              } else {
+                Text("Reasoning effort is not available for this provider.")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              }
+
+              ForEach(withheldWarnings, id: \.self) { warning in
+                Text(warning)
+                  .font(.caption)
+                  .foregroundColor(.orange)
               }
 
               HStack {
@@ -179,6 +211,69 @@ public struct ActionsTab: View {
     }
   }
 
+  // MARK: - Generation settings (specs/010-model-aware-parameters)
+
+  private var selectedProvider: ProviderConfig? {
+    viewModel.providers.first { $0.id == providerID }
+  }
+
+  /// The model a run would use: the override, else the provider's default.
+  private var effectiveModel: String {
+    let override = modelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+    return override.isEmpty ? (selectedProvider?.defaultModel ?? "") : override
+  }
+
+  /// Values offered for the selected provider kind; `nil` hides the picker
+  /// for kinds that take no reasoning setting (FR-022).
+  private var reasoningOptions: [String]? {
+    selectedProvider.flatMap { ModelProfiles.reasoningValues[$0.kind] }
+  }
+
+  /// The same resolver `ActionEngine.run` uses, so the caption and warnings
+  /// always match the request a run would send (FR-023).
+  private var resolvedParameters: ResolvedGenerationParameters? {
+    guard let provider = selectedProvider else { return nil }
+    let key = ParameterRejectionMemory.Key(
+      providerID: provider.id, baseURL: provider.baseURL?.absoluteString ?? "",
+      model: effectiveModel)
+    return GenerationParameterResolver.resolve(
+      kind: provider.kind, model: effectiveModel,
+      temperatureOverride: temperatureIsAutomatic ? nil : temperature,
+      reasoningOverride: reasoningEffort.isEmpty ? nil : reasoningEffort,
+      learnedRejections: ParameterRejectionMemory.shared.rejections(for: key))
+  }
+
+  private var automaticReasoningLabel: String {
+    switch resolvedParameters?.automaticReasoning {
+    case .level(let level):
+      return "Automatic (\(level))"
+    case .thinkingBudget(let budget):
+      return "Automatic (thinking budget \(budget))"
+    case nil:
+      return "Automatic (model default)"
+    }
+  }
+
+  private var withheldWarnings: [String] {
+    (resolvedParameters?.withheldOverrides ?? []).map { withheld in
+      let name = withheld.parameter == .temperature ? "Temperature" : "Reasoning effort"
+      switch withheld.reason {
+      case .modelRejects:
+        return "\(name) will not be sent: this model rejects it with these settings."
+      case .providerSaysRemove:
+        return "\(name) will not be sent: the provider says to leave it unset for this model."
+      case .unsupportedValue:
+        return
+          "\(name) will not be sent: this model does not support that value, "
+          + "so Automatic is used."
+      case .providerIgnores:
+        return "\(name) will not be sent: this provider does not use it."
+      case .learnedRejection:
+        return "\(name) will not be sent: the provider rejected it earlier in this session."
+      }
+    }
+  }
+
   private func prepareAddForm() {
     editingAction = nil
     title = ""
@@ -188,7 +283,10 @@ public struct ActionsTab: View {
     modelOverride = ""
     systemPrompt = ""
     userPromptTemplate = "{{text}}"
+    // New actions start on "Automatic" for both settings (FR-024).
+    temperatureIsAutomatic = true
     temperature = 0.0
+    reasoningEffort = ""
     maxInputCharacters = 5000
     allowNewlines = false
     writeStrategy = .typing
@@ -208,7 +306,9 @@ public struct ActionsTab: View {
     modelOverride = action.model ?? ""
     systemPrompt = action.systemPrompt
     userPromptTemplate = action.userPromptTemplate
-    temperature = action.temperature
+    temperatureIsAutomatic = action.temperature == nil
+    temperature = action.temperature ?? 0.0
+    reasoningEffort = action.reasoningEffort ?? ""
     maxInputCharacters = action.maxInputCharacters
     allowNewlines = action.allowNewlines
     writeStrategy = action.writeStrategy
@@ -263,7 +363,8 @@ public struct ActionsTab: View {
         modelOverride: modelOverride,
         systemPrompt: systemPrompt,
         userPromptTemplate: userPromptTemplate,
-        temperature: temperature,
+        temperature: temperatureIsAutomatic ? nil : temperature,
+        reasoningEffort: reasoningEffort.isEmpty ? nil : reasoningEffort,
         maxInputCharacters: maxInputCharacters,
         allowNewlines: allowNewlines,
         writeStrategy: writeStrategy

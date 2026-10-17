@@ -297,7 +297,13 @@ public struct ActionConfig: Codable, Equatable {
 
   public var systemPrompt: String
   public var userPromptTemplate: String
-  public var temperature: Double
+  /// `nil` means "Automatic": the model profile and the model's own default
+  /// decide (specs/010-model-aware-parameters). A stored value is the user's
+  /// override.
+  public var temperature: Double?
+  /// Provider-native reasoning value (e.g. `none`, `low`), passed through
+  /// unchanged. `nil` means "Automatic".
+  public var reasoningEffort: String?
 
   public var maxInputCharacters: Int
   public var allowNewlines: Bool
@@ -306,8 +312,8 @@ public struct ActionConfig: Codable, Equatable {
   public init(
     id: String, title: String, enabled: Bool, shortcut: ActionShortcut? = nil, providerID: String,
     model: String? = nil, systemPrompt: String, userPromptTemplate: String,
-    temperature: Double = 0.0, maxInputCharacters: Int = 5000, allowNewlines: Bool = false,
-    writeStrategy: WriteStrategy = .typing
+    temperature: Double? = nil, reasoningEffort: String? = nil, maxInputCharacters: Int = 5000,
+    allowNewlines: Bool = false, writeStrategy: WriteStrategy = .typing
   ) {
     self.id = id
     self.title = title
@@ -318,6 +324,7 @@ public struct ActionConfig: Codable, Equatable {
     self.systemPrompt = systemPrompt
     self.userPromptTemplate = userPromptTemplate
     self.temperature = temperature
+    self.reasoningEffort = Self.normalizedReasoningEffort(reasoningEffort)
     self.maxInputCharacters = maxInputCharacters
     self.allowNewlines = allowNewlines
     self.writeStrategy = writeStrategy
@@ -342,8 +349,14 @@ public struct ActionConfig: Codable, Equatable {
       decoder: decoder)
     model = tolerantDecode(
       container, key: .model, default: String?.none, context: "action '\(id)'", decoder: decoder)
+    // A missing key meant 0.0 before specs/010; it now means "Automatic".
     temperature = tolerantDecode(
-      container, key: .temperature, default: 0.0, context: "action '\(id)'", decoder: decoder)
+      container, key: .temperature, default: Double?.none, context: "action '\(id)'",
+      decoder: decoder)
+    reasoningEffort = Self.normalizedReasoningEffort(
+      tolerantDecode(
+        container, key: .reasoningEffort, default: String?.none, context: "action '\(id)'",
+        decoder: decoder))
     maxInputCharacters = tolerantDecode(
       container, key: .maxInputCharacters, default: 5000, context: "action '\(id)'",
       decoder: decoder)
@@ -352,5 +365,14 @@ public struct ActionConfig: Codable, Equatable {
     writeStrategy = tolerantDecode(
       container, key: .writeStrategy, default: .typing, context: "action '\(id)'",
       decoder: decoder)
+  }
+
+  /// Trims a reasoning value and maps a blank one to `nil` ("Automatic"), so a
+  /// hand-edited `""` never reaches a provider as an invalid value.
+  static func normalizedReasoningEffort(_ value: String?) -> String? {
+    guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !trimmed.isEmpty
+    else { return nil }
+    return trimmed
   }
 }

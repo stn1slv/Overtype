@@ -62,7 +62,7 @@ final class OllamaProviderTests: XCTestCase {
 
   // MARK: - requestBody
 
-  private func sampleBody(temperature: Double = 0.25) -> [String: Any] {
+  private func sampleBody(temperature: Double? = 0.25) -> [String: Any] {
     return OllamaProvider.requestBody(
       model: "llama3.2",
       systemPrompt: "You fix grammar.",
@@ -109,6 +109,14 @@ final class OllamaProviderTests: XCTestCase {
       return XCTFail("options missing")
     }
     XCTAssertEqual(Set(options.keys), ["temperature", "num_ctx"])
+  }
+
+  func testRequestBodyOmitsTemperatureWhenAutomatic() {
+    // specs/010: an action on "Automatic" leaves the temperature to the model.
+    guard let options = sampleBody(temperature: nil)["options"] as? [String: Any] else {
+      return XCTFail("options missing")
+    }
+    XCTAssertEqual(Set(options.keys), ["num_ctx"])
   }
 
   // MARK: - checkInputSize (FR-010b)
