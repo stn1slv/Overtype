@@ -77,14 +77,15 @@
 ### Tests for User Story 2
 
 - [ ] T021 [P] [US2] Add to Tests/OvertypeTests/AppConfigTests.swift: the seeded `DefaultConfig.defaultConfig` decodes with the OpenAI provider's `defaultModel` equal to `gpt-6-luna` and its action's `temperature` and `reasoningEffort` both `nil`; the suggested default model for the OpenAI kind is `gpt-6-luna` and other kinds have none
+- [ ] T022 [P] [US2] Add to Tests/OvertypeTests/ConfigStoreTests.swift: decoding an existing configuration whose OpenAI provider has `defaultModel` `gpt-5.4-nano` and whose action stores `"temperature": 0` keeps both values unchanged, through the same decoder setup `ConfigStore` uses (seeding happens only when no file exists; FR-019)
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Change the seeded JSON in Sources/Overtype/Config/DefaultConfig.swift: `"defaultModel": "gpt-6-luna"` and remove `"temperature"` from the `fix-grammar` action
-- [ ] T023 [US2] Add the suggested-default-model dictionary (`openAICompatible` → `gpt-6-luna`) to Sources/Overtype/Providers/ModelProfiles.swift (file from T014)
-- [ ] T024 [US2] Pre-fill the default model in Sources/Overtype/UI/Settings/ProvidersTab.swift: `prepareAddForm` sets it from the suggestion for the initial kind; on a kind change while adding, replace the field only when it is empty or still holds the previous kind's suggestion; editing an existing provider never changes it
-- [ ] T025 [P] [US2] Replace `gpt-4o-mini` with `gpt-6-luna` in docs/openai-setup.md, and update the seeded config sample in README.md (`gpt-6-luna`, no `temperature` key)
-- [ ] T026 [US2] Checkpoint: `make test` green
+- [ ] T023 [US2] Change the seeded JSON in Sources/Overtype/Config/DefaultConfig.swift: `"defaultModel": "gpt-6-luna"` and remove `"temperature"` from the `fix-grammar` action
+- [ ] T024 [US2] Add the suggested-default-model dictionary (`openAICompatible` → `gpt-6-luna`) to Sources/Overtype/Providers/ModelProfiles.swift (file from T014)
+- [ ] T025 [US2] Pre-fill the default model in Sources/Overtype/UI/Settings/ProvidersTab.swift: `prepareAddForm` sets it from the suggestion for the initial kind; on a kind change while adding, replace the field only when it is empty or still holds the previous kind's suggestion; editing an existing provider never changes it
+- [ ] T026 [P] [US2] Replace `gpt-4o-mini` with `gpt-6-luna` in docs/openai-setup.md, and update the seeded config sample in README.md (`gpt-6-luna`, no `temperature` key)
+- [ ] T027 [US2] Checkpoint: `make test` green
 
 ---
 
@@ -96,19 +97,19 @@
 
 ### Tests for User Story 3
 
-- [ ] T027 [P] [US3] Add to Tests/OvertypeTests/OpenAICompatibleProviderTests.swift: `extractRejectedParameter(from:)` maps `error.param` `temperature` → `.temperature` and `reasoning_effort` → `.reasoning`; any other `param`, a missing `param`, and a non-JSON body give `nil`
-- [ ] T028 [P] [US3] Add to Tests/OvertypeTests/ProviderErrorRetryTests.swift and Tests/OvertypeTests/ProviderErrorMessageTests.swift: `parameterRejected` is not retryable; its `errorDescription` reads "API Error 400: <message>"; its `logLabel` names the parameter and never contains the message
-- [ ] T029 [P] [US3] Add fallback cases to Tests/OvertypeTests/TransformRetryTests.swift using the existing fake provider: one rejection then success sends two requests, the second without the parameter, and records it once; a second, different rejection is also dropped; the same parameter rejected again surfaces as `apiError(400, message)`; a rejection for a parameter the request does not carry surfaces as `apiError`; Escape during a drop sends no further request; a transient failure plus two drops never exceeds four requests; existing tests compile unchanged
-- [ ] T030 [P] [US3] Add `ParameterRejectionMemory` tests to Tests/OvertypeTests/GenerationParameterResolverTests.swift: entries are isolated per provider id, base URL and model; a recorded parameter is returned for the same key only; the resolver withholds a learned parameter with reason `learnedRejection`
+- [ ] T028 [P] [US3] Add to Tests/OvertypeTests/OpenAICompatibleProviderTests.swift: `extractRejectedParameter(from:)` maps `error.param` `temperature` → `.temperature` and `reasoning_effort` → `.reasoning`; any other `param`, a missing `param`, and a non-JSON body give `nil`
+- [ ] T029 [P] [US3] Add to Tests/OvertypeTests/ProviderErrorRetryTests.swift and Tests/OvertypeTests/ProviderErrorMessageTests.swift: `parameterRejected` is not retryable; its `errorDescription` reads "API Error 400: <message>"; its `logLabel` names the parameter and never contains the message
+- [ ] T030 [P] [US3] Add fallback cases to Tests/OvertypeTests/TransformRetryTests.swift using the existing fake provider: one rejection then success sends two requests, the second without the parameter, and records it once; a second, different rejection is also dropped; the same parameter rejected again surfaces as `apiError(400, message)`; a rejection for a parameter the request does not carry surfaces as `apiError`; Escape during a drop sends no further request; a transient failure plus two drops never exceeds four requests; existing tests compile unchanged
+- [ ] T031 [P] [US3] Add `ParameterRejectionMemory` tests to Tests/OvertypeTests/GenerationParameterResolverTests.swift: entries are isolated per provider id, base URL and model; a recorded parameter is returned for the same key only; the resolver withholds a learned parameter with reason `learnedRejection`
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Add `ProviderError.parameterRejected(DroppableParameter, statusCode: Int, message: String)` with branches in `errorDescription`, `isRetryable` (false) and `logLabel` in Sources/Overtype/Providers/AIProvider.swift
-- [ ] T032 [US3] In Sources/Overtype/Providers/OpenAICompatibleProvider.swift, add static `extractRejectedParameter(from:)` reading `error.param` only (never the message, FR-016) and throw `parameterRejected` on a 400 that names a droppable parameter; every other non-200 keeps throwing `apiError`
-- [ ] T033 [US3] Add `ParameterRejectionMemory` (lock-protected, keyed by provider id, base URL string and model, shared instance) to Sources/Overtype/Providers/GenerationParameters.swift
-- [ ] T034 [US3] Extend `ActionEngine.transformWithRetry` in Sources/Overtype/Core/ActionEngine.swift with a defaulted `recordRejection: (DroppableParameter) -> Void` parameter and the drop loop from contracts/request-parameters.md (check cancellation, record, `warning` log with parameter name only, "Retrying...", no pause, rethrow undroppable rejections as `apiError`), keeping the single transient retry unchanged
-- [ ] T035 [US3] In `ActionEngine.run`, read learned rejections for the provider, base URL and model before resolving, and pass a `recordRejection` closure that writes to `ParameterRejectionMemory.shared`
-- [ ] T036 [US3] Checkpoint: `make test` green
+- [ ] T032 [US3] Add `ProviderError.parameterRejected(DroppableParameter, statusCode: Int, message: String)` with branches in `errorDescription`, `isRetryable` (false) and `logLabel` in Sources/Overtype/Providers/AIProvider.swift
+- [ ] T033 [US3] In Sources/Overtype/Providers/OpenAICompatibleProvider.swift, add static `extractRejectedParameter(from:)` reading `error.param` only (never the message, FR-016) and throw `parameterRejected` on a 400 that names a droppable parameter; every other non-200 keeps throwing `apiError`
+- [ ] T034 [US3] Add `ParameterRejectionMemory` (lock-protected, keyed by provider id, base URL string and model, shared instance) to Sources/Overtype/Providers/GenerationParameters.swift
+- [ ] T035 [US3] Extend `ActionEngine.transformWithRetry` in Sources/Overtype/Core/ActionEngine.swift with a defaulted `recordRejection: (DroppableParameter) -> Void` parameter and the drop loop from contracts/request-parameters.md (check cancellation, record, `warning` log with parameter name only, "Retrying...", no pause, rethrow undroppable rejections as `apiError`), keeping the single transient retry unchanged
+- [ ] T036 [US3] In `ActionEngine.run`, read learned rejections for the provider, base URL and model before resolving, and pass a `recordRejection` closure that writes to `ParameterRejectionMemory.shared`
+- [ ] T037 [US3] Checkpoint: `make test` green
 
 ---
 
@@ -118,23 +119,27 @@
 
 **Independent Test**: quickstart Q6 steps 1 to 4.
 
+### Tests for User Story 4
+
+- [ ] T038 [P] [US4] Create Tests/OvertypeTests/ActionParameterValidationTests.swift for a new pure static `SettingsViewModel.normalizedGenerationOverrides(temperature:reasoningEffort:)`: `nil` temperature passes; 0.0 and 2.0 pass; -0.1 and 2.1 throw the existing code-13 error; the effort is trimmed and blank becomes `nil`; a hand-edited value outside the editor list is kept (FR-020 to FR-022)
+
 ### Implementation for User Story 4
 
-- [ ] T037 [US4] Change `SettingsViewModel.saveAction` in Sources/Overtype/UI/Settings/SettingsViewModel.swift to take `temperature: Double?` and `reasoningEffort: String?`; apply the 0.0 to 2.0 check only when a temperature is set; trim the effort and store blank as `nil`
-- [ ] T038 [US4] Update Sources/Overtype/UI/Settings/ActionsTab.swift: temperature as an "Automatic" toggle plus the existing slider; a reasoning picker with "Automatic (<resolved>)", the provider kind's values, and a preserved hand-edited value; the picker hidden for kinds that take no reasoning setting, with a note that reasoning effort applies only to the providers that list values; new actions start on Automatic for both; load existing values when editing
-- [ ] T039 [US4] In Sources/Overtype/UI/Settings/ActionsTab.swift, call `GenerationParameterResolver.resolve` for the selected provider kind and model (action override, else provider default) to fill the Automatic caption and show one warning line per entry in `withheldOverrides`
-- [ ] T040 [US4] Checkpoint: `make test` green; run quickstart Q6
+- [ ] T039 [US4] Add `normalizedGenerationOverrides(temperature:reasoningEffort:)` (pure, static) and change `SettingsViewModel.saveAction` in Sources/Overtype/UI/Settings/SettingsViewModel.swift to take `temperature: Double?` and `reasoningEffort: String?` and call it: the 0.0 to 2.0 check applies only when a temperature is set; the effort is trimmed and blank is stored as `nil`
+- [ ] T040 [US4] Update Sources/Overtype/UI/Settings/ActionsTab.swift: temperature as an "Automatic" toggle plus the existing slider; a reasoning picker with "Automatic (<resolved>)", the provider kind's values, and a preserved hand-edited value; the picker hidden for kinds that take no reasoning setting, with a note that reasoning effort applies only to the providers that list values; new actions start on Automatic for both; load existing values when editing
+- [ ] T041 [US4] In Sources/Overtype/UI/Settings/ActionsTab.swift, call `GenerationParameterResolver.resolve` for the selected provider kind and model (action override, else provider default) to fill the Automatic caption and show one warning line per entry in `withheldOverrides`
+- [ ] T042 [US4] Checkpoint: `make test` green; run quickstart Q6
 
 ---
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T041 [P] Update README.md: "Specifying the AI Model" explains Automatic, both overrides and the OpenAI fallback; the Anthropic recipe uses `claude-haiku-5-5` and its two temperature notes are rewritten (research R3); the Ollama note keeps "temperature is sent when set"; the Gemini recipe stays on `gemini-3.5-flash-lite`
-- [ ] T042 [P] Update CLAUDE.md: model profiles and the resolver, the OpenAI-only fallback and its four-request bound, the optional `temperature` and new `reasoningEffort` action fields, and the new OpenAI default model
-- [ ] T043 Review every omission and withholding site for an inline reason comment (FR-026) in Sources/Overtype/Providers/ and Sources/Overtype/Core/ActionEngine.swift
-- [ ] T044 Run `make test`, `make lint` and `rg NSPasteboard Sources/ Vendor/`; confirm no `info`+ log line contains a server message or selected text
-- [ ] T045 Manual, needs the user's API keys: run quickstart Q1 (diagnostic) and adjust the `gpt-6-luna` and `gpt-6-sol` profiles in Sources/Overtype/Providers/ModelProfiles.swift if the temperature-at-`none` inference is wrong
-- [ ] T046 Manual, needs the user's API keys: run quickstart Q2 to Q5 and record Q1 to Q6 results in docs/compatibility.md
+- [ ] T043 [P] Update README.md: "Specifying the AI Model" explains Automatic, both overrides and the OpenAI fallback; the Anthropic recipe uses `claude-haiku-5-5` and its two temperature notes are rewritten (research R3); the Ollama note keeps "temperature is sent when set"; the Gemini recipe stays on `gemini-3.5-flash-lite`
+- [ ] T044 [P] Update CLAUDE.md: model profiles and the resolver, the OpenAI-only fallback and its four-request bound, the optional `temperature` and new `reasoningEffort` action fields, and the new OpenAI default model
+- [ ] T045 Review every omission and withholding site for an inline reason comment (FR-026) in Sources/Overtype/Providers/ and Sources/Overtype/Core/ActionEngine.swift
+- [ ] T046 Run `make test`, `make lint` and `rg NSPasteboard Sources/ Vendor/`; confirm no `info`+ log line contains a server message or selected text
+- [ ] T047 Manual, needs the user's API keys: run quickstart Q1 (diagnostic) and adjust the `gpt-6-luna` and `gpt-6-sol` profiles in Sources/Overtype/Providers/ModelProfiles.swift if the temperature-at-`none` inference is wrong
+- [ ] T048 Manual, needs the user's API keys: run quickstart Q2 to Q5; for SC-005 also confirm one first-request success with both settings on Automatic for each profile shape (`gpt-6-luna`, `gpt-6.1-sol`, `claude-haiku-5-5`, `gemini-3.5-flash-lite`, `gemini-3.8-flash`, `gemini-2.5-flash`); record Q1 to Q6 and these runs in docs/compatibility.md
 
 ---
 
@@ -142,18 +147,18 @@
 
 - **Setup (T001)** → **Foundational (T002 to T008)** → user stories.
 - **US1 (T009 to T020)**: depends on Foundational only. MVP.
-- **US2 (T021 to T026)**: depends on Foundational; T023 needs `ModelProfiles.swift` from T014, so run US2 after T014 or create the file first.
-- **US3 (T027 to T036)**: depends on Foundational and on T015 (the resolver takes learned rejections) and T019 (the engine call site).
-- **US4 (T037 to T040)**: depends on US1 (resolver and profiles for the caption and warnings).
-- **Polish (T041 to T046)**: after all stories. T045 should run before the release that ships the fallback.
+- **US2 (T021 to T027)**: depends on Foundational; T024 needs `ModelProfiles.swift` from T014, so run US2 after T014 or create the file first.
+- **US3 (T028 to T037)**: depends on Foundational and on T015 (the resolver takes learned rejections) and T019 (the engine call site).
+- **US4 (T038 to T042)**: depends on US1 (resolver and profiles for the caption and warnings).
+- **Polish (T043 to T048)**: after all stories. T047 should run before the release that ships the fallback.
 
 ### Parallel opportunities
 
 - Foundational: T002 and T003.
 - US1: T009 to T013 together (separate test files); T016, T017, T018 together after T015.
-- US2: T025 alongside T022 to T024.
-- US3: T027 to T030 together.
-- Polish: T041 and T042.
+- US2: T021 and T022 together; T026 alongside T023 to T025.
+- US3: T028 to T031 together.
+- Polish: T043 and T044.
 
 ### Parallel example: User Story 1
 
@@ -169,6 +174,6 @@ T013 GeminiProviderTests.swift
 
 1. **MVP**: Setup, Foundational, then US1. This alone fixes the reported `gpt-6-luna` error for every profiled model and makes Automatic fast; stop and validate with quickstart Q2.
 2. **US2**: new default model, small and independent.
-3. **US3**: the fallback for unprofiled OpenAI models; ship only after the T045 diagnostic, or ship inert if `error.param` turns out to be absent.
+3. **US3**: the fallback for unprofiled OpenAI models; ship only after the T047 diagnostic, or ship inert if `error.param` turns out to be absent.
 4. **US4**: editor controls.
 5. **Polish**: docs, comment review, full checks, manual acceptance.
