@@ -217,6 +217,35 @@ final class GenerationParameterResolverTests: XCTestCase {
     XCTAssertNil(resolved.automaticReasoning)
   }
 
+  func testCaptionDropsARejectedAutomaticValueWhileAnOverrideIsActive() {
+    // Pass-2 review: an active override hides the automatic value from the
+    // learned-rejection passes, so the caption is checked on its own.
+    let memory = ParameterRejectionMemory()
+    let lunaKey = ParameterRejectionMemory.Key(
+      providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-6-luna")
+    memory.record(.reasoning, value: "none", for: lunaKey)
+    let resolved = remembered(
+      memory, key: lunaKey, model: "gpt-6-luna", temperature: nil, reasoning: "high")
+    XCTAssertEqual(resolved.reasoning, .level("high"))
+    XCTAssertNil(resolved.automaticReasoning)
+  }
+
+  func testSecondPassOnlyWithholds() {
+    // Luna takes a temperature only at effort `none`; once `none` is learned
+    // as rejected, the second pass drops the effort and must also withhold
+    // the temperature, never send it without `none`.
+    let memory = ParameterRejectionMemory()
+    let lunaKey = ParameterRejectionMemory.Key(
+      providerID: "openai", baseURL: "https://api.openai.com/v1", model: "gpt-6-luna")
+    memory.record(.reasoning, value: "none", for: lunaKey)
+    let resolved = remembered(memory, key: lunaKey, model: "gpt-6-luna", temperature: 0)
+    XCTAssertNil(resolved.reasoning)
+    XCTAssertNil(resolved.temperature)
+    XCTAssertEqual(
+      resolved.withheldOverrides,
+      [WithheldOverride(parameter: .temperature, reason: .modelRejects)])
+  }
+
   func testWireValues() {
     XCTAssertEqual(
       ParameterRejectionMemory.wireValue(of: .temperature, temperature: 0, reasoning: nil), "0.0")

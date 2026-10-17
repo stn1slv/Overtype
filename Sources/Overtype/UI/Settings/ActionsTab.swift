@@ -243,13 +243,21 @@ public struct ActionsTab: View {
       key: key)
   }
 
-  /// The reasoning value the form would save. A kind without reasoning values
-  /// hides the picker, so a value left over from another provider (or hand
-  /// edited for Ollama) is dropped rather than stored where the user cannot
-  /// see or change it.
   private var reasoningOverrideToSave: String? {
-    guard reasoningOptions != nil, !reasoningEffort.isEmpty else { return nil }
-    return reasoningEffort
+    Self.reasoningEffortToSave(reasoningEffort, providerKind: selectedProvider?.kind)
+  }
+
+  /// The reasoning value the form saves. A kind that takes no reasoning
+  /// setting hides the picker, so a value left over from another provider (or
+  /// hand edited for Ollama) is dropped rather than stored where the user
+  /// cannot see or change it. Only a resolved kind decides that: when the
+  /// action names no known provider, the value is kept, because saving an
+  /// unrelated field must never erase a hand-edited setting. Empty means
+  /// "Automatic". Pure logic, unit-tested.
+  static func reasoningEffortToSave(_ value: String, providerKind: ProviderKind?) -> String? {
+    guard !value.isEmpty else { return nil }
+    if let providerKind, ModelProfiles.reasoningValues[providerKind] == nil { return nil }
+    return value
   }
 
   private var automaticReasoningLabel: String {
@@ -272,7 +280,12 @@ public struct ActionsTab: View {
       case .providerSaysRemove:
         return "\(name) will not be sent: the provider says to leave it unset for this model."
       case .unsupportedValue:
-        return "\(name) will not be sent: this model does not support that value."
+        // The resolver falls back to Automatic, unless the provider rejected
+        // that value too this session; say which actually happens.
+        return resolvedParameters?.reasoning == nil
+          ? "\(name) will not be sent: this model does not support that value."
+          : "\(name) will not be sent: this model does not support that value, "
+            + "so Automatic is used."
       case .providerIgnores:
         return "\(name) will not be sent: this provider does not use it."
       case .learnedRejection:

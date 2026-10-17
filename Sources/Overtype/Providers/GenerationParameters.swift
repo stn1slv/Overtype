@@ -44,6 +44,13 @@ final class ParameterRejectionMemory: @unchecked Sendable {
     rejected[key, default: [:]][parameter] = value
   }
 
+  /// The value of `parameter` the provider rejected for `key`, if any.
+  func rejectedValue(of parameter: DroppableParameter, for key: Key) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return rejected[key]?[parameter]
+  }
+
   /// The parameters whose remembered rejected value is exactly the value
   /// `resolved` would send now.
   func learnedRejections(
@@ -175,6 +182,12 @@ enum GenerationParameterResolver {
   /// treated as rejected only when the value this run would send is the value
   /// the provider rejected. `ActionEngine.run` and the Actions editor both use
   /// this, so their results stay identical.
+  ///
+  /// Two passes are sound because learned rejections only ever WITHHOLD: the
+  /// second pass can drop a parameter the first pass would send, or withhold
+  /// one that depends on it (a Luna temperature needs effort `none`), but it
+  /// never adds or changes a value. So every value the second pass sends was
+  /// already checked against the memory in the first.
   static func resolve(
     kind: ProviderKind, model: String, temperatureOverride: Double?, reasoningOverride: String?,
     memory: ParameterRejectionMemory, key: ParameterRejectionMemory.Key
@@ -183,10 +196,24 @@ enum GenerationParameterResolver {
       kind: kind, model: model, temperatureOverride: temperatureOverride,
       reasoningOverride: reasoningOverride)
     let learned = memory.learnedRejections(for: key, matching: unadjusted)
-    guard !learned.isEmpty else { return unadjusted }
-    return resolve(
-      kind: kind, model: model, temperatureOverride: temperatureOverride,
-      reasoningOverride: reasoningOverride, learnedRejections: learned)
+    let resolved =
+      learned.isEmpty
+      ? unadjusted
+      : resolve(
+        kind: kind, model: model, temperatureOverride: temperatureOverride,
+        reasoningOverride: reasoningOverride, learnedRejections: learned)
+
+    // The caption describes what "Automatic" would send, which an active
+    // override hides from the passes above: check the automatic value against
+    // the memory on its own.
+    guard let automatic = resolved.automaticReasoning,
+      let automaticValue = ParameterRejectionMemory.wireValue(
+        of: .reasoning, temperature: nil, reasoning: automatic),
+      memory.rejectedValue(of: .reasoning, for: key) == automaticValue
+    else { return resolved }
+    return ResolvedGenerationParameters(
+      temperature: resolved.temperature, reasoning: resolved.reasoning, automaticReasoning: nil,
+      withheldOverrides: resolved.withheldOverrides)
   }
 
   private static func preferredSetting(of profile: ModelProfile?) -> ReasoningSetting? {

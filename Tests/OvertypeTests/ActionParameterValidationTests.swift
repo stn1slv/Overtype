@@ -39,4 +39,17 @@ final class ActionParameterValidationTests: XCTestCase {
   func testHandEditedEffortOutsideTheListIsKept() throws {
     XCTAssertEqual(try normalize(nil, "ultra").1, "ultra")
   }
+
+  // MARK: - Which reasoning value the editor saves (pass-2 review)
+
+  func testReasoningValueIsDroppedOnlyForKindsWithoutReasoning() {
+    XCTAssertNil(ActionsTab.reasoningEffortToSave("low", providerKind: .ollama))
+    XCTAssertEqual(ActionsTab.reasoningEffortToSave("low", providerKind: .anthropic), "low")
+    XCTAssertNil(ActionsTab.reasoningEffortToSave("", providerKind: .openAICompatible))
+  }
+
+  func testReasoningValueIsKeptWhenNoProviderResolves() {
+    // A dangling providerID must not let an unrelated save erase the value.
+    XCTAssertEqual(ActionsTab.reasoningEffortToSave("high", providerKind: nil), "high")
+  }
 }
