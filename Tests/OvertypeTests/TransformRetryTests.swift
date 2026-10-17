@@ -18,6 +18,7 @@ final class TransformRetryTests: XCTestCase {
   private final class ScriptedProvider: AIProvider, @unchecked Sendable {
     let id = "fake"
     private(set) var callCount = 0
+    private(set) var requests: [TransformRequest] = []
     private let outcomes: [Result<String, Error>]
     /// When set, the first call spins until the surrounding task is cancelled,
     /// so cancellation is deterministically pending at the retry decision.
@@ -30,6 +31,7 @@ final class TransformRetryTests: XCTestCase {
 
     func transform(_ request: TransformRequest) async throws -> String {
       callCount += 1
+      requests.append(request)
       if awaitCancellationOnFirstCall && callCount == 1 {
         while !Task.isCancelled {
           await Task.yield()
@@ -315,5 +317,112 @@ final class TransformRetryTests: XCTestCase {
     let provider = ScriptedProvider([.failure(ProviderError.cancelled), .success("unreached")])
     _ = try? await runRetry(provider)
     XCTAssertEqual(provider.callCount, 1)
+  }
+
+  // MARK: - Adaptive fallback (specs/010-model-aware-parameters, US3)
+
+  private let fullRequest = TransformRequest(
+    text: "hello", systemPrompt: "sys", userPromptTemplate: "{{text}}", model: "m",
+    temperature: 0.0, reasoning: .level("low"))
+
+  private func rejected(_ parameter: DroppableParameter) -> Result<String, Error> {
+    .failure(
+      ProviderError.parameterRejected(parameter, statusCode: 400, message: "Unsupported value"))
+  }
+
+  private func runFallback(
+    _ provider: ScriptedProvider, request: TransformRequest? = nil,
+    recorded: @escaping (DroppableParameter) -> Void = { _ in },
+    progress: @escaping (String) -> Void = { _ in }
+  ) async throws -> String {
+    try await ActionEngine.transformWithRetry(
+      provider: provider, request: request ?? fullRequest, retryDelaySeconds: 0,
+      showProgress: progress, recordRejection: recorded)
+  }
+
+  func testRejectedParameterIsDroppedOnceAndRecorded() async throws {
+    let provider = ScriptedProvider([rejected(.temperature), .success("ok")])
+    var recorded: [DroppableParameter] = []
+    var messages: [String] = []
+    let result = try await runFallback(
+      provider, recorded: { recorded.append($0) }, progress: { messages.append($0) })
+
+    XCTAssertEqual(result, "ok")
+    XCTAssertEqual(provider.callCount, 2)
+    XCTAssertEqual(provider.requests[0].temperature, 0.0)
+    XCTAssertNil(provider.requests[1].temperature)
+    XCTAssertEqual(provider.requests[1].reasoning, .level("low"))
+    XCTAssertEqual(recorded, [.temperature])
+    XCTAssertEqual(messages, ["Retrying..."])
+  }
+
+  func testTwoDifferentRejectionsAreBothDropped() async throws {
+    let provider = ScriptedProvider([rejected(.reasoning), rejected(.temperature), .success("ok")])
+    var recorded: [DroppableParameter] = []
+    let result = try await runFallback(provider, recorded: { recorded.append($0) })
+    XCTAssertEqual(result, "ok")
+    XCTAssertEqual(provider.callCount, 3)
+    XCTAssertNil(provider.requests[2].temperature)
+    XCTAssertNil(provider.requests[2].reasoning)
+    XCTAssertEqual(recorded, [.reasoning, .temperature])
+  }
+
+  func testSameParameterRejectedTwiceSurfacesAsAPIError() async {
+    let provider = ScriptedProvider([rejected(.temperature), rejected(.temperature)])
+    do {
+      _ = try await runFallback(provider)
+      XCTFail("expected an error")
+    } catch let ProviderError.apiError(statusCode, message) {
+      // The existing "API Error 400: ..." HUD path applies unchanged.
+      XCTAssertEqual(statusCode, 400)
+      XCTAssertEqual(message, "Unsupported value")
+    } catch {
+      XCTFail("expected apiError, got \(error)")
+    }
+    XCTAssertEqual(provider.callCount, 2)
+  }
+
+  func testRejectionOfAParameterNotSentSurfacesAsAPIError() async {
+    let bare = TransformRequest(
+      text: "hello", systemPrompt: "sys", userPromptTemplate: "{{text}}", model: "m",
+      temperature: nil)
+    let provider = ScriptedProvider([rejected(.temperature)])
+    var recorded: [DroppableParameter] = []
+    do {
+      _ = try await runFallback(provider, request: bare, recorded: { recorded.append($0) })
+      XCTFail("expected an error")
+    } catch ProviderError.apiError(let statusCode, _) {
+      XCTAssertEqual(statusCode, 400)
+    } catch {
+      XCTFail("expected apiError, got \(error)")
+    }
+    XCTAssertEqual(provider.callCount, 1)
+    XCTAssertTrue(recorded.isEmpty)
+  }
+
+  func testCancellationDuringADropSendsNoFurtherRequest() async {
+    let provider = ScriptedProvider(
+      [rejected(.temperature), .success("unreached")], awaitCancellationOnFirstCall: true)
+    let task = Task { try await self.runFallback(provider) }
+    task.cancel()
+    _ = await task.result
+    XCTAssertEqual(provider.callCount, 1)
+  }
+
+  func testRequestsPerRunAreBoundedAtFour() async {
+    // Two drops plus the single transient retry; a fifth outcome is never used.
+    let provider = ScriptedProvider([
+      rejected(.temperature), .failure(ProviderError.timeout), rejected(.reasoning),
+      .failure(ProviderError.timeout), .success("unreached"),
+    ])
+    do {
+      _ = try await runFallback(provider)
+      XCTFail("expected the second timeout to surface")
+    } catch ProviderError.timeout {
+      // expected
+    } catch {
+      XCTFail("expected timeout, got \(error)")
+    }
+    XCTAssertEqual(provider.callCount, 4)
   }
 }

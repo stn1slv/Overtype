@@ -49,6 +49,33 @@ public class ActionEngine {
     let retryDelaySeconds =
       providerConfig?.retryDelaySeconds ?? ProviderConfig.defaultRetryDelaySeconds
 
+    // Which optional parameters the request carries is decided in one place
+    // (specs/010-model-aware-parameters): the model's built-in profile, the
+    // action's overrides, and anything this provider rejected earlier.
+    let rejectionKey = ParameterRejectionMemory.Key(
+      providerID: action.providerID,
+      baseURL: providerConfig?.baseURL?.absoluteString ?? "", model: model)
+    let parameters: (temperature: Double?, reasoning: ReasoningSetting?)
+    if let providerConfig {
+      let resolved = GenerationParameterResolver.resolve(
+        kind: providerConfig.kind, model: model, temperatureOverride: action.temperature,
+        reasoningOverride: action.reasoningEffort, memory: ParameterRejectionMemory.shared,
+        key: rejectionKey)
+      parameters = (resolved.temperature, resolved.reasoning)
+      // An override the user set but this run will not send must not vanish
+      // silently (Principle VI): name the parameter and the reason, never the
+      // value. The editor shows the same reasons before the run.
+      for withheld in resolved.withheldOverrides {
+        Logger.shared.log(
+          "Action '\(action.title)': \(withheld.parameter.rawValue) override not sent "
+            + "(\(withheld.reason)) for model \(model).", level: .warning)
+      }
+    } else {
+      // Without a provider record there is no kind to resolve against; send
+      // exactly what the action sets, as for a model without a profile.
+      parameters = (action.temperature, action.reasoningEffort.map { .level($0) })
+    }
+
     // Progress states honor the Show HUD preference; errors are always shown
     // regardless (Principle VI: no silent failure).
     let showHUD = config.global.showHUD
@@ -90,12 +117,23 @@ public class ActionEngine {
           systemPrompt: action.systemPrompt,
           userPromptTemplate: action.userPromptTemplate,
           model: model,
-          temperature: action.temperature
+          temperature: parameters.temperature,
+          reasoning: parameters.reasoning
         )
 
         let rawResponse = try await Self.transformWithRetry(
           provider: provider, request: request, retryDelaySeconds: retryDelaySeconds,
-          showProgress: showProgress)
+          showProgress: showProgress,
+          recordRejection: { parameter in
+            // A drop only removes parameters, so the rejected value is the one
+            // this run started with.
+            guard
+              let value = ParameterRejectionMemory.wireValue(
+                of: parameter, temperature: parameters.temperature,
+                reasoning: parameters.reasoning)
+            else { return }
+            ParameterRejectionMemory.shared.record(parameter, value: value, for: rejectionKey)
+          })
 
         try Task.checkCancellation()
 
@@ -257,6 +295,15 @@ public class ActionEngine {
   /// call has changed nothing in the document (the write happens later, after
   /// the context re-check), so repeating it is safe under Principle II.
   ///
+  /// A second, independent kind of retry handles a rejected optional parameter
+  /// (specs/010-model-aware-parameters, contracts/request-parameters.md): when
+  /// the provider names `temperature` or the reasoning setting as unsupported,
+  /// the request is resent once without it, with no pause (a rejection is not
+  /// a rate limit), and `recordRejection` lets the caller skip it in later
+  /// runs. Each parameter is dropped at most once, so a run sends at most four
+  /// requests (two drops plus the one transient retry). A rejection that
+  /// cannot be fixed by dropping surfaces as the plain `apiError` it is.
+  ///
   /// `static` and `internal` on purpose: it touches no instance state, so tests
   /// can drive it with a fake `AIProvider` without standing up an engine or
   /// reaching through `ProviderRegistry.shared`.
@@ -264,37 +311,67 @@ public class ActionEngine {
     provider: AIProvider,
     request: TransformRequest,
     retryDelaySeconds: Double,
-    showProgress: (String) -> Void
+    showProgress: (String) -> Void,
+    recordRejection: (DroppableParameter) -> Void = { _ in }
   ) async throws -> String {
-    do {
-      return try await provider.transform(request)
-    } catch let error as ProviderError where error.isRetryable {
-      // Escape pressed during the failed attempt must abort here rather than
-      // start a second request.
-      try Task.checkCancellation()
+    var request = request
+    var dropped: Set<DroppableParameter> = []
+    var transientRetryUsed = false
 
-      Logger.shared.log(
-        "Provider call failed (\(error.logLabel)); retrying once.", level: .warning)
-      showProgress("Retrying...")
-
-      // Brief pause so a rate limit has a chance to clear before the second
-      // attempt. Task.sleep is cancellable, so Escape during the wait still
-      // aborts the run with nothing written.
-      //
-      // A hand-edited value outside the supported range is clamped rather than
-      // honored, so say so (Principle IV): otherwise a configured 120s behaves
-      // as 60s with nothing to explain the difference.
-      if !Self.isRetryDelayInRange(retryDelaySeconds) {
+    while true {
+      do {
+        return try await provider.transform(request)
+      } catch let ProviderError.parameterRejected(parameter, statusCode, message) {
+        guard !dropped.contains(parameter), let reduced = request.removing(parameter) else {
+          throw ProviderError.apiError(statusCode: statusCode, message: message)
+        }
+        // Escape pressed during the rejected attempt must not start another.
+        try Task.checkCancellation()
+        dropped.insert(parameter)
+        recordRejection(parameter)
+        // Parameter name, provider id and model only: the server message can
+        // echo fragments of the submitted text (Principle V).
         Logger.shared.log(
-          "Configured retryDelaySeconds (\(retryDelaySeconds)) is outside "
-            + "0...\(Self.maxRetryDelaySeconds)s; clamping.", level: .warning)
+          "Provider \(provider.id) rejected the \(parameter.rawValue) parameter for model "
+            + "\(request.model); resending without it.", level: .warning)
+        showProgress("Retrying...")
+        request = reduced
+      } catch let error as ProviderError where error.isRetryable && !transientRetryUsed {
+        transientRetryUsed = true
+        try await pauseBeforeTransientRetry(
+          after: error, retryDelaySeconds: retryDelaySeconds, showProgress: showProgress)
       }
-      let delayNanoseconds = Self.retryDelayNanoseconds(forSeconds: retryDelaySeconds)
-      if delayNanoseconds > 0 {
-        try await Task.sleep(nanoseconds: delayNanoseconds)
-      }
+    }
+  }
 
-      return try await provider.transform(request)
+  /// The existing single transient retry's preamble: cancellation check, log,
+  /// HUD update and the configured pause.
+  private static func pauseBeforeTransientRetry(
+    after error: ProviderError, retryDelaySeconds: Double, showProgress: (String) -> Void
+  ) async throws {
+    // Escape pressed during the failed attempt must abort here rather than
+    // start a second request.
+    try Task.checkCancellation()
+
+    Logger.shared.log(
+      "Provider call failed (\(error.logLabel)); retrying once.", level: .warning)
+    showProgress("Retrying...")
+
+    // Brief pause so a rate limit has a chance to clear before the second
+    // attempt. Task.sleep is cancellable, so Escape during the wait still
+    // aborts the run with nothing written.
+    //
+    // A hand-edited value outside the supported range is clamped rather than
+    // honored, so say so (Principle IV): otherwise a configured 120s behaves
+    // as 60s with nothing to explain the difference.
+    if !Self.isRetryDelayInRange(retryDelaySeconds) {
+      Logger.shared.log(
+        "Configured retryDelaySeconds (\(retryDelaySeconds)) is outside "
+          + "0...\(Self.maxRetryDelaySeconds)s; clamping.", level: .warning)
+    }
+    let delayNanoseconds = Self.retryDelayNanoseconds(forSeconds: retryDelaySeconds)
+    if delayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: delayNanoseconds)
     }
   }
 

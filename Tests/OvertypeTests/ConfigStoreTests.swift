@@ -19,6 +19,31 @@ final class ConfigStoreTests: XCTestCase {
     XCTAssertEqual(config?.actions.first?.providerID, "openai")
   }
 
+  func testExistingConfigKeepsItsModelAndTemperature() throws {
+    // specs/010 FR-019: an upgrade never swaps a configured model for the new
+    // seeded default. ConfigStore seeds only when no file exists and otherwise
+    // decodes the file as below, so the stored values must survive the decode.
+    let json = #"""
+      {
+        "providers": [
+          {"id": "openai", "kind": "openai", "baseURL": "https://api.openai.com/v1",
+           "defaultModel": "gpt-5.4-nano", "keychainKey": "k"}
+        ],
+        "actions": [
+          {"id": "fix-grammar", "title": "Fix grammar", "providerID": "openai",
+           "systemPrompt": "s", "userPromptTemplate": "{{text}}", "temperature": 0}
+        ]
+      }
+      """#
+    let issues = ConfigDecodingIssues()
+    let decoder = JSONDecoder()
+    ConfigDecodingIssues.attach(issues, to: decoder)
+    let config = try decoder.decode(AppConfig.self, from: Data(json.utf8))
+    XCTAssertEqual(config.providers.first?.defaultModel, "gpt-5.4-nano")
+    XCTAssertEqual(config.actions.first?.temperature, 0)
+    XCTAssertTrue(issues.issues.isEmpty)
+  }
+
   func testDefaultConfigHasVerifiedOutlookTypingOverride() {
     let override = DefaultConfig.defaultConfig?.global.appTypingOverrides?["com.microsoft.Outlook"]
     XCTAssertEqual(override?.typingChunkSize, 1)

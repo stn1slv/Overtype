@@ -326,3 +326,38 @@ the two are indistinguishable. `testALegitimatePromptCanNeverReachTheTruncationâ
 Signal` asserts that gap across five window sizes. Verified live against
 `tinyllama`: a 2000-character selection is refused with a limit of **768**, the
 budget that model's window actually allows, not the fixed 6000.
+
+### Model-aware parameters (specs/010-model-aware-parameters)
+
+#### Q1: OpenAI parameter diagnostic (executed 2026-10-17)
+
+Run against the OpenAI Chat Completions API (`/v1/chat/completions`) with the user's own key, quickstart Q1 plus three probes. Only status and `error.*` fields were recorded; the key was never printed.
+
+| Request | HTTP | `error.code` | `error.param` | Supported values named in the error |
+|---|---|---|---|---|
+| `gpt-6-luna`, `temperature: 0`, default effort | 400 | `unsupported_value` | `temperature` | "Only the default (1) value is supported" |
+| `gpt-6-astra`, `reasoning_effort: "none"` | 400 | `unsupported_value` | `reasoning_effort` | low, medium, high, xhigh |
+| `gpt-6-luna`, `reasoning_effort: "none"`, `temperature: 0` | 200 | | | |
+| `gpt-6-luna`, `reasoning_effort: "minimal"` | 400 | `unsupported_value` | `reasoning_effort` | none, low, medium, high, xhigh |
+| `gpt-6-sol`, `reasoning_effort: "minimal"` | 400 | `unsupported_value` | `reasoning_effort` | none, low, medium, high, xhigh |
+| `gpt-6.1-sol`, `reasoning_effort: "none"` | 400 | `unsupported_value` | `reasoning_effort` | low, medium, high, xhigh |
+
+Findings:
+
+- OpenAI names the rejected parameter in the structured `error.param` field for both `temperature` and `reasoning_effort`, so the adaptive fallback has the signal it needs (FR-014).
+- `gpt-6-luna` accepts a temperature at effort `none`. The `acceptedOnlyAtLevels(["none"])` rule for Luna is confirmed; the reported error (temperature 0 at the default effort) is reproduced by the first request and avoided by what "Automatic" sends.
+- No GPT-6 model accepts effort `max` on Chat Completions, although the model pages list it. The four OpenAI profiles in `ModelProfiles.swift` were corrected to the lists above.
+
+#### End-to-end acceptance
+
+Built app 1.2.1 (build 44) from branch `010-model-aware-parameters`, run by the user on 2026-10-17.
+
+Note: the feature was merged with Q3 to Q6 still pending, as an explicit, dated exception approved 2026-10-17 and recorded in the feature's plan.md. No release may ship until they pass (constitution VIII); executing and recording them remains open work.
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| Q2 | Existing config, model changed to `gpt-6-luna`, `temperature: 0` kept (SC-001) | First request succeeds, no error HUD | pass (2026-10-17) |
+| Q3 | Fresh install (SC-002) | Seeded model `gpt-6-luna`; "Fix grammar" succeeds with only a key added | pending |
+| Q4 | Unprofiled OpenAI model that rejects `temperature` (SC-003) | One "Retrying..." on the first run; one request on later runs | pending |
+| Q5 | Automatic per profile shape and latency (SC-005) | First-request success for each shape; lower median than the default level | pending |
+| Q6 | Actions and Providers editor (T042) | Automatic defaults, caption, warnings, hidden picker for Ollama, `gpt-6-luna` pre-fill | pending |

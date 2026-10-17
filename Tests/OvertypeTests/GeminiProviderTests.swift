@@ -120,6 +120,45 @@ final class GeminiProviderTests: XCTestCase {
     XCTAssertEqual(url.absoluteString, "https://example.com/v1beta/models/m:generateContent")
   }
 
+  // MARK: - Request body (specs/010-model-aware-parameters)
+
+  private func generationConfig(
+    temperature: Double?, reasoning: ReasoningSetting?
+  ) -> [String: Any]? {
+    GeminiProvider.requestBody(
+      systemPrompt: "sys", userPrompt: "user", temperature: temperature, reasoning: reasoning
+    )["generationConfig"] as? [String: Any]
+  }
+
+  func testRequestBodyOmitsGenerationConfigWhenNothingIsSet() {
+    let body = GeminiProvider.requestBody(
+      systemPrompt: "sys", userPrompt: "user", temperature: nil, reasoning: nil)
+    XCTAssertEqual(Set(body.keys), ["systemInstruction", "contents"])
+  }
+
+  func testRequestBodySendsTemperatureOnlyWhenSet() {
+    XCTAssertEqual(
+      generationConfig(temperature: 0.4, reasoning: nil)?["temperature"] as? Double, 0.4)
+    XCTAssertNil(generationConfig(temperature: nil, reasoning: .level("low"))?["temperature"])
+  }
+
+  func testRequestBodySendsThinkingLevel() {
+    let thinking =
+      generationConfig(temperature: nil, reasoning: .level("minimal"))?["thinkingConfig"]
+      as? [String: Any]
+    XCTAssertEqual(thinking?["thinkingLevel"] as? String, "minimal")
+    XCTAssertNil(thinking?["thinkingBudget"])
+  }
+
+  func testRequestBodySendsThinkingBudget() {
+    // Gemini 2.5 takes a budget; sending it together with a level is a 400.
+    let thinking =
+      generationConfig(temperature: nil, reasoning: .thinkingBudget(0))?["thinkingConfig"]
+      as? [String: Any]
+    XCTAssertEqual(thinking?["thinkingBudget"] as? Int, 0)
+    XCTAssertNil(thinking?["thinkingLevel"])
+  }
+
   // MARK: - Helpers
 
   private func assertParseThrows(_ body: String, _ check: (Error) -> Void) {

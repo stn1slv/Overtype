@@ -30,6 +30,35 @@ final class OpenAICompatibleProviderTests: XCTestCase {
     }
   }
 
+  // MARK: - Request body (specs/010-model-aware-parameters)
+
+  private func body(temperature: Double?, reasoning: ReasoningSetting?) -> [String: Any] {
+    OpenAICompatibleProvider.requestBody(
+      model: "gpt-6-luna", systemPrompt: "sys", userPrompt: "user", temperature: temperature,
+      reasoning: reasoning)
+  }
+
+  func testRequestBodyOnAutomaticCarriesOnlyModelAndMessages() {
+    XCTAssertEqual(Set(body(temperature: nil, reasoning: nil).keys), ["model", "messages"])
+  }
+
+  func testRequestBodySendsReasoningEffort() {
+    let sent = body(temperature: nil, reasoning: .level("none"))
+    XCTAssertEqual(sent["reasoning_effort"] as? String, "none")
+    XCTAssertNil(sent["temperature"])
+  }
+
+  func testRequestBodySendsTemperatureOnlyWhenSet() {
+    let sent = body(temperature: 0, reasoning: .level("none"))
+    XCTAssertEqual(sent["temperature"] as? Double, 0)
+    XCTAssertEqual(Set(sent.keys), ["model", "messages", "temperature", "reasoning_effort"])
+  }
+
+  func testRequestBodyIgnoresAThinkingBudget() {
+    // Budgets exist only for Gemini; the resolver never produces one here.
+    XCTAssertNil(body(temperature: nil, reasoning: .thinkingBudget(0))["reasoning_effort"])
+  }
+
   // MARK: - Response parsing
 
   private func parse(_ json: String) throws -> String {

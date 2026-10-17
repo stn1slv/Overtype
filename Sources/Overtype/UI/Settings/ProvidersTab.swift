@@ -146,7 +146,7 @@ public struct ProvidersTab: View {
             TextField("Name", text: $name)
               .disabled(editingProvider != nil)
 
-            Picker("Kind", selection: $kind) {
+            Picker("Kind", selection: Binding(get: { kind }, set: { changeKind(to: $0) })) {
               ForEach(selectableKinds, id: \.self) { kind in
                 Text(kindLabel(kind)).tag(kind)
               }
@@ -208,12 +208,28 @@ public struct ProvidersTab: View {
     name = ""
     kind = .openAICompatible
     baseURLString = ""
-    defaultModel = ""
+    // specs/010 FR-018: a new provider starts on the suggested model for its
+    // kind (gpt-6-luna for OpenAI); the user can replace it.
+    defaultModel = ModelProfiles.suggestedDefaultModel[kind] ?? ""
     timeout = 30.0
     retryDelay = ProviderConfig.defaultRetryDelaySeconds
     apiKey = ""
     errorMessage = nil
     isShowingEditSheet = true
+  }
+
+  /// Switching the kind while adding a provider swaps the pre-filled model for
+  /// the new kind's suggestion, but only while the field is empty or still
+  /// holds the previous suggestion: a model the user typed is never replaced,
+  /// and editing an existing provider never touches its model (FR-019).
+  private func changeKind(to newKind: ProviderKind) {
+    if editingProvider == nil {
+      let previousSuggestion = ModelProfiles.suggestedDefaultModel[kind] ?? ""
+      if defaultModel.isEmpty || defaultModel == previousSuggestion {
+        defaultModel = ModelProfiles.suggestedDefaultModel[newKind] ?? ""
+      }
+    }
+    kind = newKind
   }
 
   private func prepareEditForm(_ provider: ProviderConfig) {

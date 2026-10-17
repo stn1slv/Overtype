@@ -73,6 +73,23 @@ public final class SettingsViewModel: ObservableObject {
       && draft.actions == lastLoaded.actions
   }
 
+  /// Validates the action editor's two optional generation settings
+  /// (specs/010-model-aware-parameters). `nil` means "Automatic" and always
+  /// passes; a set temperature keeps the existing 0.0 to 2.0 check (error 13).
+  /// The reasoning value is trimmed and blank becomes "Automatic"; any other
+  /// text is kept, because values are provider-native and new ones appear with
+  /// new models. Pure logic, unit-tested.
+  static func normalizedGenerationOverrides(
+    temperature: Double?, reasoningEffort: String?
+  ) throws -> (temperature: Double?, reasoningEffort: String?) {
+    if let temperature, !(temperature >= 0.0 && temperature <= 2.0) {
+      throw NSError(
+        domain: "SettingsError", code: 13,
+        userInfo: [NSLocalizedDescriptionKey: "Temperature must be between 0.0 and 2.0."])
+    }
+    return (temperature, ActionConfig.normalizedReasoningEffort(reasoningEffort))
+  }
+
   public func reloadFromDisk() {
     // Actually read the file (finding C7): before this, the method read the
     // in-process cache, so hand edits made while the app runs were invisible
@@ -329,7 +346,8 @@ public final class SettingsViewModel: ObservableObject {
     modelOverride: String?,
     systemPrompt: String,
     userPromptTemplate: String,
-    temperature: Double,
+    temperature: Double?,
+    reasoningEffort: String?,
     maxInputCharacters: Int,
     allowNewlines: Bool,
     writeStrategy: WriteStrategy
@@ -356,11 +374,8 @@ public final class SettingsViewModel: ObservableObject {
           NSLocalizedDescriptionKey: "User prompt template must contain the '{{text}}' placeholder."
         ])
     }
-    guard temperature >= 0.0 && temperature <= 2.0 else {
-      throw NSError(
-        domain: "SettingsError", code: 13,
-        userInfo: [NSLocalizedDescriptionKey: "Temperature must be between 0.0 and 2.0."])
-    }
+    let (temperature, reasoningEffort) = try Self.normalizedGenerationOverrides(
+      temperature: temperature, reasoningEffort: reasoningEffort)
     guard maxInputCharacters > 0 else {
       throw NSError(
         domain: "SettingsError", code: 14,
@@ -402,6 +417,7 @@ public final class SettingsViewModel: ObservableObject {
           systemPrompt: trimmedSystem,
           userPromptTemplate: trimmedUserTemplate,
           temperature: temperature,
+          reasoningEffort: reasoningEffort,
           maxInputCharacters: maxInputCharacters,
           allowNewlines: allowNewlines,
           writeStrategy: writeStrategy
@@ -430,6 +446,7 @@ public final class SettingsViewModel: ObservableObject {
         systemPrompt: trimmedSystem,
         userPromptTemplate: trimmedUserTemplate,
         temperature: temperature,
+        reasoningEffort: reasoningEffort,
         maxInputCharacters: maxInputCharacters,
         allowNewlines: allowNewlines,
         writeStrategy: writeStrategy
