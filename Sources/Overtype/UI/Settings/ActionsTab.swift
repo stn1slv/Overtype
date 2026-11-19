@@ -121,6 +121,14 @@ public struct ActionsTab: View {
               TextField(
                 "Model Override (Optional)", text: $modelOverride, prompt: Text("e.g. gpt-4o"))
 
+              if let warning = Self.modelOverrideWarning(
+                kind: selectedProvider?.kind, modelOverride: modelOverride)
+              {
+                Text(warning)
+                  .font(.caption)
+                  .foregroundColor(.orange)
+              }
+
               Text("System Prompt")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -269,6 +277,19 @@ public struct ActionsTab: View {
     case nil:
       return "Automatic (model default)"
     }
+  }
+
+  /// A warning when the override names a model the provider kind cannot run.
+  /// Only the Apple kind has a fixed model set: an action override other than
+  /// `system` would make every run fail (specs/011, review round 2). Pure,
+  /// unit-tested.
+  static func modelOverrideWarning(kind: ProviderKind?, modelOverride: String) -> String? {
+    let override = modelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard kind == .apple, !AppleFoundationModelProvider.acceptsModel(override) else { return nil }
+    return
+      "The Apple on-device provider runs only the model "
+      + "\"\(AppleFoundationModelProvider.systemModelID)\". Clear the override, "
+      + "or every run of this action will fail."
   }
 
   private var withheldWarnings: [String] {

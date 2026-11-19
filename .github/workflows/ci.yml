@@ -21,13 +21,13 @@ jobs:
       # Command Line Tools lack the SwiftUI macro plugins, so use full Xcode.
       # Pinned to the toolchain the Apple provider was verified with; on the
       # xcode-27 image Xcode.app is 27.1 (specs/011).
+      # The list comes first, so when an image update removes 27.2 the log
+      # shows which versions it has before xcode-select fails.
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_27.2.app/Contents/Developer
-
-      # Names the toolchain in the log, so a runner image that rotated its
-      # Xcode versions fails with a visible cause.
-      - name: Show Xcode version
-        run: xcodebuild -version
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode_27.2.app/Contents/Developer
+          xcodebuild -version
 
       - name: Run tests
         run: swift test

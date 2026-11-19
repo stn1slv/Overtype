@@ -266,9 +266,9 @@ public enum ProviderError: Error, LocalizedError {
       // condition onto `.serviceUnreachable` before it gets there.
       return false
     case .rateLimited(let resetDate):
-      // Retry only when the limit can clear within the retry pause: the
-      // Settings slider allows at most `maxUsefulRateLimitWait` seconds. A
-      // later reset would make the second request fail the same way.
+      // Retry only when the limit ends soon. `ActionEngine` then waits until
+      // the reset before the retry (`transientRetryPauseSeconds`); a later
+      // reset would keep the user waiting, so the error is shown at once.
       guard let resetDate else { return true }
       return resetDate.timeIntervalSinceNow <= Self.maxUsefulRateLimitWait
     case .onDeviceModelUnavailable, .contextWindowExceeded, .unsupportedLanguage,
@@ -280,7 +280,7 @@ public enum ProviderError: Error, LocalizedError {
   }
 
   /// The longest wait for a rate limit to clear that still makes the single
-  /// retry worthwhile; matches the Providers tab's retry-delay maximum.
+  /// retry worthwhile. The pause before that retry lasts until the reset.
   static let maxUsefulRateLimitWait: TimeInterval = 5
 
   /// A redaction-safe label for logs. `errorDescription` may embed a server

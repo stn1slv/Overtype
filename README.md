@@ -264,7 +264,7 @@ Overtype can use the language model built into macOS through Apple's FoundationM
    }
    ```
 
-   `system` is the only model name (an empty name means the same). macOS does not let apps choose another on-device model.
+   `system` is the only model name (an empty name means the same). macOS does not let apps choose another on-device model. An action's `"model"` override must also be empty or `system` when it uses this provider; the Actions editor warns otherwise.
 
 3. Point an action at the provider by setting its `"providerID"` to `"apple"`.
 

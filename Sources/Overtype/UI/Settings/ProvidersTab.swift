@@ -15,6 +15,9 @@ public struct ProvidersTab: View {
   @State private var retryDelay = ProviderConfig.defaultRetryDelaySeconds
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
+  /// The model the Apple kind replaced in this sheet, restored if the user
+  /// switches the kind away from Apple again (specs/011).
+  @State private var modelBeforeApple: String? = nil
 
   /// Kinds selectable in the form. All four are implemented as of
   /// specs/008-ollama-provider; the fallback below stays because a hand-edited
@@ -230,6 +233,7 @@ public struct ProvidersTab: View {
 
   private func prepareAddForm() {
     editingProvider = nil
+    modelBeforeApple = nil
     name = ""
     kind = .openAICompatible
     baseURLString = ""
@@ -248,18 +252,11 @@ public struct ProvidersTab: View {
   /// holds the previous suggestion: a model the user typed is never replaced,
   /// and editing an existing provider never touches its model (FR-019).
   private func changeKind(to newKind: ProviderKind) {
-    if newKind == .apple, !AppleFoundationModelProvider.acceptsModel(defaultModel) {
-      // Narrow exception to FR-019 (specs/011, user decision 2026-11-19): the
-      // Apple kind has exactly one model, so any other model, typed or kept
-      // from another kind, would make every run fail with "model not
-      // available". Applies when adding and when editing.
-      defaultModel = AppleFoundationModelProvider.systemModelID
-    } else if editingProvider == nil {
-      let previousSuggestion = ModelProfiles.suggestedDefaultModel[kind] ?? ""
-      if defaultModel.isEmpty || defaultModel == previousSuggestion {
-        defaultModel = ModelProfiles.suggestedDefaultModel[newKind] ?? ""
-      }
-    }
+    let change = Self.modelAfterKindChange(
+      from: kind, to: newKind, model: defaultModel, modelBeforeApple: modelBeforeApple,
+      isNewProvider: editingProvider == nil)
+    defaultModel = change.model
+    modelBeforeApple = change.modelBeforeApple
     if editingProvider == nil {
       // Same rule for the timeout: swap the kind's suggestion only while the
       // slider still holds the previous kind's suggestion.
@@ -273,8 +270,43 @@ public struct ProvidersTab: View {
     kind = newKind
   }
 
+  /// The model field after the kind picker changes. Pure, unit-tested.
+  ///
+  /// - Switching to Apple replaces any model other than empty or `system` with
+  ///   `system` and remembers the replaced one. This is a narrow exception to
+  ///   FR-019 (specs/011, user decision 2026-11-19): the Apple kind has exactly
+  ///   one model, so any other would make every run fail. Applies when adding
+  ///   and when editing.
+  /// - Switching away from Apple while the field still holds `system` restores
+  ///   the remembered model, so a round trip in the picker loses nothing.
+  /// - Otherwise, a new provider swaps the previous kind's suggestion for the
+  ///   new kind's (FR-018); an existing provider keeps its model (FR-019).
+  static func modelAfterKindChange(
+    from oldKind: ProviderKind, to newKind: ProviderKind, model: String,
+    modelBeforeApple: String?, isNewProvider: Bool
+  ) -> (model: String, modelBeforeApple: String?) {
+    let system = AppleFoundationModelProvider.systemModelID
+    if newKind == .apple {
+      guard !AppleFoundationModelProvider.acceptsModel(model) else {
+        return (model, modelBeforeApple)
+      }
+      return (system, model)
+    }
+    if oldKind == .apple, model == system, let restored = modelBeforeApple {
+      return (restored, nil)
+    }
+    if isNewProvider {
+      let previousSuggestion = ModelProfiles.suggestedDefaultModel[oldKind] ?? ""
+      if model.isEmpty || model == previousSuggestion {
+        return (ModelProfiles.suggestedDefaultModel[newKind] ?? "", modelBeforeApple)
+      }
+    }
+    return (model, modelBeforeApple)
+  }
+
   private func prepareEditForm(_ provider: ProviderConfig) {
     editingProvider = provider
+    modelBeforeApple = nil
     name = provider.id
     kind = provider.kind
     baseURLString = provider.baseURL?.absoluteString ?? ""

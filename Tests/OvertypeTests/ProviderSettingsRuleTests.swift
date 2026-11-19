@@ -103,3 +103,56 @@ final class ProviderSettingsRuleTests: XCTestCase {
     XCTAssertNil(result.deleteItem)
   }
 }
+
+/// specs/011 review round 2: the model field when the kind picker changes,
+/// and the Actions editor warning for an Apple action override.
+final class AppleModelFieldTests: XCTestCase {
+
+  private func change(
+    _ from: ProviderKind, _ to: ProviderKind, _ model: String, saved: String? = nil,
+    isNew: Bool = false
+  ) -> (model: String, modelBeforeApple: String?) {
+    ProvidersTab.modelAfterKindChange(
+      from: from, to: to, model: model, modelBeforeApple: saved, isNewProvider: isNew)
+  }
+
+  func testSwitchingToAppleRemembersTheReplacedModel() {
+    let result = change(.openAICompatible, .apple, "gpt-6-luna")
+    XCTAssertEqual(result.model, "system")
+    XCTAssertEqual(result.modelBeforeApple, "gpt-6-luna")
+  }
+
+  func testRoundTripRestoresTheModel() {
+    let toApple = change(.openAICompatible, .apple, "gpt-6-luna")
+    let back = change(.apple, .openAICompatible, toApple.model, saved: toApple.modelBeforeApple)
+    XCTAssertEqual(back.model, "gpt-6-luna")
+    XCTAssertNil(back.modelBeforeApple)
+  }
+
+  func testNewProviderCustomModelIsReplacedAndRestored() {
+    let toApple = change(.openAICompatible, .apple, "my-model", isNew: true)
+    XCTAssertEqual(toApple.model, "system")
+    let back = change(
+      .apple, .ollama, toApple.model, saved: toApple.modelBeforeApple, isNew: true)
+    XCTAssertEqual(back.model, "my-model")
+  }
+
+  func testNewProviderStillSwapsSuggestions() {
+    XCTAssertEqual(change(.openAICompatible, .apple, "gpt-6-luna", isNew: true).model, "system")
+    XCTAssertEqual(change(.apple, .openAICompatible, "system", isNew: true).model, "gpt-6-luna")
+    XCTAssertEqual(change(.openAICompatible, .ollama, "gpt-6-luna", isNew: true).model, "")
+  }
+
+  func testExistingProviderKeepsItsModelBetweenOtherKinds() {
+    XCTAssertEqual(change(.openAICompatible, .ollama, "gpt-6-luna").model, "gpt-6-luna")
+  }
+
+  func testAppleOverrideWarning() {
+    XCTAssertNotNil(ActionsTab.modelOverrideWarning(kind: .apple, modelOverride: "gpt-6-luna"))
+    XCTAssertNil(ActionsTab.modelOverrideWarning(kind: .apple, modelOverride: " "))
+    XCTAssertNil(ActionsTab.modelOverrideWarning(kind: .apple, modelOverride: "system"))
+    XCTAssertNil(
+      ActionsTab.modelOverrideWarning(kind: .openAICompatible, modelOverride: "gpt-6-luna"))
+    XCTAssertNil(ActionsTab.modelOverrideWarning(kind: nil, modelOverride: "x"))
+  }
+}
