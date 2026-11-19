@@ -55,7 +55,7 @@ Diagnostic results (2026-11-19, `respond(to:options:contextOptions:)`):
 
 - **Decision**: One profile row: kind `.apple`, model ID `system`, `reasoning: nil`, temperature `.accepted`, source "on-device diagnostic 2026-11-19, macOS 27.2.1, AFM 3 Core Advanced". No `reasoningValues` entry for `.apple`, so the editor hides the reasoning picker and the resolver withholds a hand-edited override with `.providerIgnores`. `suggestedDefaultModel[.apple] = "system"`. The provider never sends `ContextOptions.reasoningLevel`.
 - **Rationale**: Sending any reasoning level fails every request. Temperature has no rejected range on this model, so an explicit value is always passed and Automatic sends none.
-- **Spec impact**: User Story 4 scenario 3 says an out-of-range temperature is withheld. The diagnostic found no rejected range, so nothing is ever withheld for temperature on this kind. Recorded here for the analyze/reconcile step.
+- **Spec alignment**: User Story 4 scenario 3 (revised after analysis finding I1): an explicit temperature is always passed and never withheld for this kind.
 
 ## R7: Context window and output length
 
@@ -92,7 +92,7 @@ Diagnostic results:
 ## R11: Language support
 
 - **Finding**: `supportedLanguages` lists 24 locales (da, de, en, es, fr, it, ja, ko, nb, nl, pt, sv, tr, vi, zh and regional variants). Welsh and Amharic input did **not** raise `unsupportedLanguageOrLocale`; the model answered in English (Amharic: "This is a mock Arabic text.").
-- **Decision**: Map the error when it occurs, but do not pre-check the language. Document in the README that the model supports a fixed list of languages and may answer in English, or translate wrongly, for others.
+- **Decision**: Map the error when the model reports it (User Story 3 scenario 7, revised after analysis finding U1), but do not pre-check the language. Document in the README that the model supports a fixed list of languages and may answer in English, or translate wrongly, for others.
 - **Rationale**: Detecting the input language reliably is out of scope, and a pre-check by `NLLanguageRecognizer` would reject mixed-language text that works.
 
 ## R12: Settings for a provider with no address and no key
@@ -102,7 +102,7 @@ Diagnostic results:
 
 ## R13: Model identifier
 
-- **Decision**: The only accepted model ID is `system` (the name `fm` uses for the on-device model). An empty model is impossible after Settings validation; an action-level or hand-edited model other than `system` throws `.modelNotAvailable(model:)` (existing case).
+- **Decision**: An empty model ID and `system` (the name `fm` uses for the on-device model) both mean the on-device system model. Any other name, from an action or a hand-edited provider, throws `.modelNotAvailable(model:)` (existing case). Spec Clarifications, analysis finding I2.
 - **Rationale**: `SystemLanguageModel.variant` is read-only on macOS 27; there is no API to choose `core3` or `coreAdvanced3`. Silently ignoring a wrong name would hide a configuration mistake.
 
 ## R14: Logging and privacy

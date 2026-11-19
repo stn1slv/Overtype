@@ -10,7 +10,7 @@ The provider exposes no network or file interface. Its contract is the `AIProvid
 |---|---|
 | `request.systemPrompt` | Session instructions |
 | `request.userPromptTemplate` with `{{text}}` replaced by `request.text` | The prompt |
-| `request.model` | Must be `system` |
+| `request.model` | Must be empty or `system`; anything else throws `.modelNotAvailable` |
 | `request.temperature` | `GenerationOptions.temperature` when non-nil; omitted otherwise |
 | `request.reasoning` | Never sent (the model rejects every reasoning level) |
 

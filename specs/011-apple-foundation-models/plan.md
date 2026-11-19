@@ -37,14 +37,14 @@ Add a fifth provider kind, `apple`, that runs Overtype actions on Apple's on-dev
 | I. Clipboard Isolation | The provider touches only the model API. Reading and writing stay in the unchanged pipeline. PR check `rg NSPasteboard Sources/ Vendor/` stays clean. |
 | II. Non-Destructive | The provider returns text or throws; the write and context re-check in `ActionEngine` are unchanged. No `maximumResponseTokens`, because a capped response is silently truncated (research R7), which would replace the whole selection with part of it. |
 | III. Evidence Over Assumption | Profile values, context size, truncation, cancellation and language behaviour come from diagnostic runs (research R6 to R11), recorded in `docs/compatibility.md`. The background-app rate-limit question stays open until quickstart Q4 runs the real app. The guardrail choice carries an inline comment. |
-| IV. Configuration Over Code | Backend added with the three edits: `ProviderKind.apple`, `AppleFoundationModelProvider`, one `ProviderRegistry` line. Additional edits, as in features 004, 007 and 008: new `ProviderError` cases (shared error type), a profile row and per-kind data in `ModelProfiles` (the 010 rule), and the Settings form, which needs kind-specific fields. Actions need no code. |
+| IV. Configuration Over Code | Backend added with the three edits: `ProviderKind.apple`, `AppleFoundationModelProvider`, one `ProviderRegistry` line. Actions need no code. Three further files change; each is recorded as an explicit, dated exception (E1 to E3 under Complexity Tracking), as the Governance clause requires. |
 | V. Privacy | No network, no key, no logging of text (only `logLabel`). The provider list shows "On this Mac (no network)" so the user sees where text goes. `docs/privacy.md` updated. |
 | VI. No Silent Failure | Every unavailability reason and framework error has a specific typed message (data-model.md). Cancellable through structured concurrency (measured 0.32 s). Hard timeout through a task-group race. |
 | VII. Native Stack | System framework only, no new package. No force unwrap. Swift 5.9 mode kept. The app stays macOS 13+; the framework is weak-linked (verified by spike, re-verified on the built app). |
 | VIII. Verification | Pure mapping, messages, retryability, profile and settings logic are unit-tested. The model call is system-boundary code, covered by quickstart Q1 to Q9 in `docs/compatibility.md`. |
 | Platform constraints | Build now requires Xcode 27; CI and release use the `xcode-27` preview runner (user decision, research R2). |
 
-No violations; Complexity Tracking is empty.
+Passes with the three dated exceptions E1 to E3 below.
 
 ## Project Structure
 
@@ -90,7 +90,7 @@ README.md, docs/privacy.md, docs/compatibility.md, CLAUDE.md
 ## Design Notes
 
 - **Availability gate**: `transform` starts with `guard #available(macOS 27, *) else { throw ProviderError.onDeviceModelUnavailable(.operatingSystemTooOld) }`, then calls a `@available(macOS 27, *)` private implementation. Nothing from `FoundationModels` is stored in properties, so the class itself has no availability attribute and `ProviderRegistry` can create it on any OS.
-- **Model check**: `request.model != "system"` throws `.modelNotAvailable(model:)` (research R13).
+- **Model check**: a model other than empty or `system` throws `.modelNotAvailable(model:)` (research R13).
 - **Generation**: `LanguageModelSession(model: SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations), instructions: request.systemPrompt)`, then `respond(to: prompt, options: GenerationOptions(temperature: request.temperature))`. Blank content throws `.emptyResponse`.
 - **Timeout**: throwing task group of the generation and `Task.sleep(timeoutSeconds)`; first to finish wins, `cancelAll()` on the rest.
 - **Retry**: `.rateLimited` and `.timeout` get the existing single retry; everything new is permanent (data-model.md).
@@ -99,4 +99,10 @@ README.md, docs/privacy.md, docs/compatibility.md, CLAUDE.md
 
 ## Complexity Tracking
 
-None.
+Explicit, dated exceptions to Principle IV ("No other file may need to change"), recorded 2026-11-19 under the Governance clause "Any deviation found MUST be either corrected or recorded as an explicit, dated exception in the plan that introduced it". Feature 008 recorded the same kind of exceptions (`specs/008-ollama-provider/plan.md`).
+
+| ID | Exception (file) | Why needed | Simpler alternative rejected because |
+|----|------------------|------------|-------------------------------------|
+| E1 | Five new `ProviderError` cases in `Providers/AIProvider.swift` | Principle VI requires typed errors that tell the user what failed and what to do; on-device unavailability, token context limit, unsupported language, rate limit and generic model failure have no existing case with a correct message | Reusing existing cases moves the cause into a string (forbidden by Principle VI) or shows a wrong message (`inputTooLargeForContext` counts bytes, `apiError(429)` says "API Error") |
+| E2 | Apple branch in `UI/Settings/ProvidersTab.swift` and `UI/Settings/SettingsViewModel.swift` | FR-012: the form must not ask for an address or key, and saving must store neither and delete a stale key | Without it, the form offers fields the provider ignores and the create path always writes a `keychainKey` reference, contradicting User Story 2 scenario 2 |
+| E3 | Profile row and per-kind data in `Providers/ModelProfiles.swift` | FR-011 and the 010 rule: every kind's parameters come from the shared resolver and its profile table | Without a profile the editor shows no evidence-based Automatic caption, and the suggested model `system` would not be pre-filled |

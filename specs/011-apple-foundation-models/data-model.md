@@ -11,7 +11,7 @@ New case `apple`, raw value `"apple"`. Existing raw values are unchanged, so exi
 | `id` | As for every kind (slug, unique). |
 | `kind` | `"apple"` |
 | `baseURL` | Always `nil` when saved from Settings. A hand-edited value is loaded but ignored by the provider. |
-| `defaultModel` | `"system"`, pre-filled in Settings (`ModelProfiles.suggestedDefaultModel[.apple]`). |
+| `defaultModel` | `"system"`, pre-filled in Settings (`ModelProfiles.suggestedDefaultModel[.apple]`). An empty value (hand-edited) also means the system model; any other value fails the run with `modelNotAvailable`. |
 | `timeoutSeconds` | As for every kind. README recipe uses 60. |
 | `retryDelaySeconds` | As for every kind. |
 | `keychainKey` | Always `nil` when saved from Settings. Switching an existing provider to `.apple` deletes its stored Keychain item. A hand-edited value is ignored. |
@@ -67,7 +67,7 @@ Per-kind data: `suggestedDefaultModel[.apple] = "system"`; no `reasoningValues` 
 ```text
 start
   -> OS < 27                    -> throw onDeviceModelUnavailable(.operatingSystemTooOld)
-  -> model != "system"          -> throw modelNotAvailable(model)
+  -> model not "" or "system"   -> throw modelNotAvailable(model)
   -> availability unavailable   -> throw onDeviceModelUnavailable(reason)
   -> generate (fresh session, permissive guardrails, temperature if any)
        -> Escape                -> cancelled
