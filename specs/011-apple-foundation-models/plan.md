@@ -109,6 +109,10 @@ Explicit, dated exceptions to Principle IV ("No other file may need to change"),
 | E2 | Apple branch in `UI/Settings/ProvidersTab.swift` and `UI/Settings/SettingsViewModel.swift` | FR-012: the form must not ask for an address or key, and saving must store neither and delete a stale key | Without it, the form offers fields the provider ignores and the create path always writes a `keychainKey` reference, contradicting User Story 2 scenario 2 |
 | E3 | Profile row and per-kind data in `Providers/ModelProfiles.swift` | FR-011 and the 010 rule: every kind's parameters come from the shared resolver and its profile table | Without a profile the editor shows no evidence-based Automatic caption, and the suggested model `system` would not be pre-filled |
 
+## Merge and release exception 2026-11-19
+
+- The feature is merged to `main` and released as v1.4.0 with quickstart Q1 to Q10 (tasks T026 and T027) still recorded as pending in `docs/compatibility.md`. This is an explicit, dated exception to constitution Principle VIII, approved by the project owner on 2026-11-19. Before the merge, all unit tests passed, the provider itself ran against the real on-device model (short input, oversized input, timeout and cancellation, recorded in `docs/compatibility.md`), and the built app was checked for the weak link. Executing and recording Q1 to Q10 stays open work, and any regression they reveal is a release blocker for the next tag. Feature 010's pending Q3 to Q6 are not changed by this exception.
+
 ## Revisions
 
 ### Revision: Implementation Sync 2026-11-19 [Sync: apple-settings-and-ci-pin]

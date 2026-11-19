@@ -399,6 +399,8 @@ The released `Overtype.app` (build from this branch) has `minos 13.0` and loads 
 
 #### End-to-end acceptance
 
+Note: merged and released as v1.4.0 with these rows still pending, as an explicit, dated exception approved by the project owner on 2026-11-19 and recorded in the feature's plan.md (constitution VIII); executing and recording them remains open work, and any regression they reveal blocks the next tag.
+
 Pending: quickstart Q1 to Q10 (`specs/011-apple-foundation-models/quickstart.md`) against the built app. Q4 checks whether macOS rate-limits a menu bar app that is not frontmost; the command-line run above cannot answer that.
 
 | # | Scenario | Expected | Result |
