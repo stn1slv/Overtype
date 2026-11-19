@@ -23,6 +23,8 @@ public class ProviderRegistry {
         providers[config.id] = OllamaProvider(config: config)
       case .gemini:
         providers[config.id] = GeminiProvider(config: config)
+      case .apple:
+        providers[config.id] = AppleFoundationModelProvider(config: config)
       }
     }
   }

@@ -169,6 +169,9 @@ public enum ProviderKind: String, Codable, Equatable {
   case anthropic = "anthropic"
   case ollama = "ollama"
   case gemini = "gemini"
+  /// Apple's on-device model through the FoundationModels framework
+  /// (specs/011-apple-foundation-models). Runs on macOS 27+ only.
+  case apple = "apple"
 }
 
 public struct ProviderConfig: Codable, Equatable {

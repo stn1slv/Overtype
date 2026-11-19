@@ -280,6 +280,19 @@ public class ActionEngine {
     return UInt64(min(seconds, maxRetryDelaySeconds) * 1_000_000_000)
   }
 
+  /// The pause before the single transient retry. Normally the configured
+  /// delay; for a rate limit that says when it ends, at least until then, so
+  /// the retry is not sent while the limit is still active (specs/011). The
+  /// caller clamps the result to `maxRetryDelaySeconds`, and
+  /// `ProviderError.isRetryable` already refuses a reset further away than
+  /// `ProviderError.maxUsefulRateLimitWait`. Pure, unit-tested.
+  static func transientRetryPauseSeconds(
+    after error: ProviderError, retryDelaySeconds: Double, now: Date = Date()
+  ) -> Double {
+    guard case .rateLimited(let resetDate?) = error else { return retryDelaySeconds }
+    return max(retryDelaySeconds, resetDate.timeIntervalSince(now))
+  }
+
   /// Whether a configured delay is used as written rather than clamped. Lets the
   /// caller warn instead of silently substituting a different value, the same
   /// reason the Providers tab loads `retryDelaySeconds` unclamped.
@@ -369,7 +382,9 @@ public class ActionEngine {
         "Configured retryDelaySeconds (\(retryDelaySeconds)) is outside "
           + "0...\(Self.maxRetryDelaySeconds)s; clamping.", level: .warning)
     }
-    let delayNanoseconds = Self.retryDelayNanoseconds(forSeconds: retryDelaySeconds)
+    let delayNanoseconds = Self.retryDelayNanoseconds(
+      forSeconds: Self.transientRetryPauseSeconds(
+        after: error, retryDelaySeconds: retryDelaySeconds))
     if delayNanoseconds > 0 {
       try await Task.sleep(nanoseconds: delayNanoseconds)
     }

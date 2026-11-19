@@ -11,7 +11,9 @@ permissions:
 jobs:
   release:
     name: Build & Release App
-    runs-on: macos-latest
+    # The Apple provider uses the macOS 27 FoundationModels API, which needs
+    # Xcode 27; macos-latest ships Xcode 26 (specs/011 research R2).
+    runs-on: xcode-27
     
     steps:
       - name: Checkout code
@@ -25,8 +27,15 @@ jobs:
           # Info.plist and the release then reports build 0.
           fetch-depth: 0
 
+      # Pinned to the toolchain the Apple provider was verified with; on the
+      # xcode-27 image Xcode.app is 27.1 (specs/011).
+      # The list comes first, so when an image update removes 27.2 the log
+      # shows which versions it has before xcode-select fails.
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode_27.2.app/Contents/Developer
+          xcodebuild -version
 
       - name: Run tests
         run: swift test
@@ -36,6 +45,17 @@ jobs:
           # Same expression used below for the zip name and the cask, so the
           # version shown inside the app cannot diverge from the release assets.
           OVERTYPE_VERSION="${GITHUB_REF_NAME#v}" ./scripts/build-app.sh
+
+      # The app targets macOS 13 but uses FoundationModels (macOS 27) behind
+      # #available. A strong link would stop the app from launching on
+      # macOS 13 to 26, and CI runs only on macOS 27, so check the load
+      # command before publishing (specs/011 research R3).
+      - name: Check FoundationModels is weak-linked
+        run: |
+          otool -l Overtype.app/Contents/MacOS/Overtype \
+            | grep -B3 'FoundationModels.framework' \
+            | grep -q 'LC_LOAD_WEAK_DYLIB' \
+            || { echo "FoundationModels is not weak-linked; the app would not launch before macOS 27." >&2; exit 1; }
           
       - name: Zip .app bundle
         run: |

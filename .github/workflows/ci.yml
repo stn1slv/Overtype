@@ -10,15 +10,24 @@ permissions:
 
 jobs:
   test:
-    runs-on: macos-latest
+    # The Apple provider uses the macOS 27 FoundationModels API, which needs
+    # Xcode 27; macos-latest ships Xcode 26 (specs/011 research R2).
+    runs-on: xcode-27
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Command Line Tools lack the SwiftUI macro plugins, so use full Xcode.
+      # Pinned to the toolchain the Apple provider was verified with; on the
+      # xcode-27 image Xcode.app is 27.1 (specs/011).
+      # The list comes first, so when an image update removes 27.2 the log
+      # shows which versions it has before xcode-select fails.
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode_27.2.app/Contents/Developer
+          xcodebuild -version
 
       - name: Run tests
         run: swift test

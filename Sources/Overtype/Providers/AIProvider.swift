@@ -45,6 +45,20 @@ public protocol AIProvider {
   func transform(_ request: TransformRequest) async throws -> String
 }
 
+/// Why Apple's on-device model cannot serve a request
+/// (specs/011-apple-foundation-models). Plain Swift so it exists, and can be
+/// tested, on every macOS version the app supports.
+public enum OnDeviceModelUnavailability: Equatable {
+  /// macOS is older than 27, the first version the provider supports.
+  case operatingSystemTooOld
+  case deviceNotEligible
+  case appleIntelligenceNotEnabled
+  /// The model is still downloading or otherwise not ready.
+  case modelNotReady
+  /// A reason added by a later macOS version.
+  case unknown
+}
+
 public enum ProviderError: Error, LocalizedError {
   case apiKeyMissing
   case invalidURL
@@ -79,9 +93,58 @@ public enum ProviderError: Error, LocalizedError {
   /// without it; when it cannot, the error surfaces as a plain `apiError`
   /// (specs/010-model-aware-parameters, US3).
   case parameterRejected(DroppableParameter, statusCode: Int, message: String)
+  /// Apple's on-device model cannot run on this Mac right now
+  /// (specs/011-apple-foundation-models). Each reason has its own fix.
+  case onDeviceModelUnavailable(OnDeviceModelUnavailability)
+  /// The prompt plus the answer did not fit in the model's context window, in
+  /// tokens. Distinct from `inputTooLargeForContext`, which counts bytes and is
+  /// raised before sending: the on-device model also reaches this limit when
+  /// its answer runs on too long (specs/011 research R7).
+  case contextWindowExceeded(tokenLimit: Int)
+  /// The model reported that it does not support the text's language.
+  case unsupportedLanguage(code: String)
+  /// The system limited how often Overtype may call the model. `resetDate`
+  /// is when the limit ends, if the system said so.
+  case rateLimited(resetDate: Date?)
+  /// Any other failure of the on-device model, with Apple's own description.
+  case onDeviceModelFailed(message: String)
 
   public var errorDescription: String? {
     switch self {
+    case .onDeviceModelUnavailable(let reason):
+      switch reason {
+      case .operatingSystemTooOld:
+        return "The Apple on-device model requires macOS 27 or later. Nothing was changed."
+      case .deviceNotEligible:
+        return
+          "This Mac does not support Apple Intelligence, so the on-device model "
+          + "cannot run. Nothing was changed."
+      case .appleIntelligenceNotEnabled:
+        return
+          "Turn on Apple Intelligence in System Settings to use the on-device "
+          + "model. Nothing was changed."
+      case .modelNotReady:
+        return
+          "The on-device model is not ready yet (it may still be downloading). "
+          + "Try again later. Nothing was changed."
+      case .unknown:
+        return "The on-device model is not available right now. Nothing was changed."
+      }
+    case .contextWindowExceeded(let tokenLimit):
+      return
+        "The text is too long for the on-device model: the selection, the "
+        + "action's prompt and the answer must fit in \(tokenLimit) tokens together. "
+        + "Select less text and try again. Nothing was changed."
+    case .unsupportedLanguage(let code):
+      return
+        "The on-device model does not support this text's language (\(code)). "
+        + "Nothing was changed."
+    case .rateLimited:
+      return
+        "macOS temporarily limited how often Overtype can use the on-device "
+        + "model. Wait a moment and try again. Nothing was changed."
+    case .onDeviceModelFailed(let message):
+      return "The on-device model failed (\(message)). Nothing was changed."
     case .parameterRejected(_, let statusCode, let message):
       return "API Error \(statusCode): \(message)"
     case .apiKeyMissing:
@@ -202,8 +265,23 @@ public enum ProviderError: Error, LocalizedError {
       // host and is left untouched, while the Ollama provider maps the same
       // condition onto `.serviceUnreachable` before it gets there.
       return false
+    case .rateLimited(let resetDate):
+      // Retry only when the limit ends soon. `ActionEngine` then waits until
+      // the reset before the retry (`transientRetryPauseSeconds`); a later
+      // reset would keep the user waiting, so the error is shown at once.
+      guard let resetDate else { return true }
+      return resetDate.timeIntervalSinceNow <= Self.maxUsefulRateLimitWait
+    case .onDeviceModelUnavailable, .contextWindowExceeded, .unsupportedLanguage,
+      .onDeviceModelFailed:
+      // Device state, text length and language do not change between two
+      // identical requests a moment apart (specs/011 FR-007).
+      return false
     }
   }
+
+  /// The longest wait for a rate limit to clear that still makes the single
+  /// retry worthwhile. The pause before that retry lasts until the reset.
+  static let maxUsefulRateLimitWait: TimeInterval = 5
 
   /// A redaction-safe label for logs. `errorDescription` may embed a server
   /// message, which can echo fragments of the submitted text, so it must not
@@ -243,6 +321,16 @@ public enum ProviderError: Error, LocalizedError {
       return "input too large for context"
     case .outputTruncated:
       return "output truncated"
+    case .onDeviceModelUnavailable:
+      return "on-device model unavailable"
+    case .contextWindowExceeded:
+      return "context window exceeded"
+    case .unsupportedLanguage:
+      return "unsupported language"
+    case .rateLimited:
+      return "rate limited"
+    case .onDeviceModelFailed:
+      return "on-device model failed"
     }
   }
 

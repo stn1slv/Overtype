@@ -77,4 +77,28 @@ final class RetryDelayClampTests: XCTestCase {
         "delay of \(seconds)s exceeded the clamp")
     }
   }
+
+  // MARK: - Pause until a rate limit resets (specs/011, review round 2)
+
+  func testRateLimitPauseWaitsUntilTheReset() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let error = ProviderError.rateLimited(resetDate: now.addingTimeInterval(3))
+    XCTAssertEqual(
+      ActionEngine.transientRetryPauseSeconds(after: error, retryDelaySeconds: 0.5, now: now), 3)
+  }
+
+  func testConfiguredDelayWinsWhenLonger() {
+    let now = Date(timeIntervalSince1970: 1_000)
+    let error = ProviderError.rateLimited(resetDate: now.addingTimeInterval(1))
+    XCTAssertEqual(
+      ActionEngine.transientRetryPauseSeconds(after: error, retryDelaySeconds: 2, now: now), 2)
+  }
+
+  func testOtherErrorsUseTheConfiguredDelay() {
+    XCTAssertEqual(
+      ActionEngine.transientRetryPauseSeconds(after: .timeout, retryDelaySeconds: 0.5), 0.5)
+    XCTAssertEqual(
+      ActionEngine.transientRetryPauseSeconds(
+        after: .rateLimited(resetDate: nil), retryDelaySeconds: 0.5), 0.5)
+  }
 }

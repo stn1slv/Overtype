@@ -15,13 +15,16 @@ public struct ProvidersTab: View {
   @State private var retryDelay = ProviderConfig.defaultRetryDelaySeconds
   @State private var apiKey = ""
   @State private var errorMessage: String? = nil
+  /// The model the Apple kind replaced in this sheet, restored if the user
+  /// switches the kind away from Apple again (specs/011).
+  @State private var modelBeforeApple: String? = nil
 
   /// Kinds selectable in the form. All four are implemented as of
   /// specs/008-ollama-provider; the fallback below stays because a hand-edited
   /// config may still name a kind this list does not, and editing such a
   /// provider must not silently change its kind.
   private var selectableKinds: [ProviderKind] {
-    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic, .ollama]
+    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic, .ollama, .apple]
     if let current = editingProvider?.kind, !kinds.contains(current) {
       kinds.append(current)
     }
@@ -43,7 +46,14 @@ public struct ProvidersTab: View {
     case .gemini: return "Default: generativelanguage.googleapis.com"
     case .anthropic: return "Default: api.anthropic.com"
     case .ollama: return "Default: http://localhost:11434"
+    // Not shown: the field is hidden for this kind (kindsWithoutEndpointOrKey).
+    case .apple: return ""
     }
+  }
+
+  /// Whether the form shows the Base URL and API Key fields for `kind`.
+  private func usesEndpointAndKey(_ kind: ProviderKind) -> Bool {
+    !ModelProfiles.kindsWithoutEndpointOrKey.contains(kind)
   }
 
   /// Placeholder shown inside the empty API key field.
@@ -75,6 +85,11 @@ public struct ProvidersTab: View {
     case .gemini: return "Gemini"
     case .anthropic: return "Anthropic"
     case .ollama: return "Ollama"
+    case .apple:
+      // Shown on older macOS too, so the picker matches a config that already
+      // contains an Apple provider (spec Clarifications).
+      if #available(macOS 27, *) { return "Apple on-device" }
+      return "Apple on-device (requires macOS 27)"
     }
   }
 
@@ -108,7 +123,12 @@ public struct ProvidersTab: View {
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
-              if let baseURL = provider.baseURL {
+              if !usesEndpointAndKey(provider.kind) {
+                // Principle V: the user can see where the text goes.
+                Text("On this Mac (no network)")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              } else if let baseURL = provider.baseURL {
                 Text(baseURL.absoluteString)
                   .font(.caption)
                   .foregroundColor(.secondary)
@@ -152,9 +172,15 @@ public struct ProvidersTab: View {
               }
             }
 
-            TextField(
-              "Base URL", text: $baseURLString,
-              prompt: Text(baseURLPlaceholder(for: kind)))
+            if usesEndpointAndKey(kind) {
+              TextField(
+                "Base URL", text: $baseURLString,
+                prompt: Text(baseURLPlaceholder(for: kind)))
+            } else {
+              Text("Runs on this Mac. No network, no API key.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
 
             TextField("Default Model", text: $defaultModel)
 
@@ -174,9 +200,11 @@ public struct ProvidersTab: View {
                 + "Only transient failures (network errors, timeouts, rate limits, "
                 + "server errors) are retried. Set to 0 to retry immediately.")
 
-            SecureField(
-              "API Key", text: $apiKey,
-              prompt: Text(apiKeyPrompt(for: kind)))
+            if usesEndpointAndKey(kind) {
+              SecureField(
+                "API Key", text: $apiKey,
+                prompt: Text(apiKeyPrompt(for: kind)))
+            }
           }
         }
         .padding()
@@ -205,13 +233,14 @@ public struct ProvidersTab: View {
 
   private func prepareAddForm() {
     editingProvider = nil
+    modelBeforeApple = nil
     name = ""
     kind = .openAICompatible
     baseURLString = ""
     // specs/010 FR-018: a new provider starts on the suggested model for its
     // kind (gpt-6-luna for OpenAI); the user can replace it.
     defaultModel = ModelProfiles.suggestedDefaultModel[kind] ?? ""
-    timeout = 30.0
+    timeout = ModelProfiles.suggestedTimeoutSeconds[kind] ?? ModelProfiles.defaultTimeoutSeconds
     retryDelay = ProviderConfig.defaultRetryDelaySeconds
     apiKey = ""
     errorMessage = nil
@@ -223,17 +252,61 @@ public struct ProvidersTab: View {
   /// holds the previous suggestion: a model the user typed is never replaced,
   /// and editing an existing provider never touches its model (FR-019).
   private func changeKind(to newKind: ProviderKind) {
+    let change = Self.modelAfterKindChange(
+      from: kind, to: newKind, model: defaultModel, modelBeforeApple: modelBeforeApple,
+      isNewProvider: editingProvider == nil)
+    defaultModel = change.model
+    modelBeforeApple = change.modelBeforeApple
     if editingProvider == nil {
-      let previousSuggestion = ModelProfiles.suggestedDefaultModel[kind] ?? ""
-      if defaultModel.isEmpty || defaultModel == previousSuggestion {
-        defaultModel = ModelProfiles.suggestedDefaultModel[newKind] ?? ""
+      // Same rule for the timeout: swap the kind's suggestion only while the
+      // slider still holds the previous kind's suggestion.
+      let previousTimeout =
+        ModelProfiles.suggestedTimeoutSeconds[kind] ?? ModelProfiles.defaultTimeoutSeconds
+      if timeout == previousTimeout {
+        timeout =
+          ModelProfiles.suggestedTimeoutSeconds[newKind] ?? ModelProfiles.defaultTimeoutSeconds
       }
     }
     kind = newKind
   }
 
+  /// The model field after the kind picker changes. Pure, unit-tested.
+  ///
+  /// - Switching to Apple replaces any model other than empty or `system` with
+  ///   `system` and remembers the replaced one. This is a narrow exception to
+  ///   FR-019 (specs/011, user decision 2026-11-19): the Apple kind has exactly
+  ///   one model, so any other would make every run fail. Applies when adding
+  ///   and when editing.
+  /// - Switching away from Apple while the field still holds `system` restores
+  ///   the remembered model, so a round trip in the picker loses nothing.
+  /// - Otherwise, a new provider swaps the previous kind's suggestion for the
+  ///   new kind's (FR-018); an existing provider keeps its model (FR-019).
+  static func modelAfterKindChange(
+    from oldKind: ProviderKind, to newKind: ProviderKind, model: String,
+    modelBeforeApple: String?, isNewProvider: Bool
+  ) -> (model: String, modelBeforeApple: String?) {
+    let system = AppleFoundationModelProvider.systemModelID
+    if newKind == .apple {
+      guard !AppleFoundationModelProvider.acceptsModel(model) else {
+        return (model, modelBeforeApple)
+      }
+      return (system, model)
+    }
+    if oldKind == .apple, model == system, let restored = modelBeforeApple {
+      return (restored, nil)
+    }
+    if isNewProvider {
+      let previousSuggestion = ModelProfiles.suggestedDefaultModel[oldKind] ?? ""
+      if model.isEmpty || model == previousSuggestion {
+        return (ModelProfiles.suggestedDefaultModel[newKind] ?? "", modelBeforeApple)
+      }
+    }
+    return (model, modelBeforeApple)
+  }
+
   private func prepareEditForm(_ provider: ProviderConfig) {
     editingProvider = provider
+    modelBeforeApple = nil
     name = provider.id
     kind = provider.kind
     baseURLString = provider.baseURL?.absoluteString ?? ""

@@ -153,4 +153,27 @@ final class ModelProfilesTests: XCTestCase {
     XCTAssertEqual(ModelProfiles.reasoningValues[.gemini], geminiWithMinimal)
     XCTAssertNil(ModelProfiles.reasoningValues[.ollama])
   }
+
+  // MARK: - Apple on-device model (specs/011 research R6)
+
+  func testAppleProfileComesFromTheDiagnostic() {
+    let profile = ModelProfiles.profile(for: .apple, model: "system")
+    XCTAssertNotNil(profile)
+    XCTAssertNil(profile?.reasoning)
+    XCTAssertEqual(profile?.temperature, .accepted)
+    XCTAssertTrue(profile?.source.contains("2026-11-19") ?? false)
+    XCTAssertNil(ModelProfiles.reasoningValues[.apple])
+    XCTAssertEqual(ModelProfiles.suggestedDefaultModel[.apple], "system")
+    XCTAssertFalse(ModelProfiles.kindsWithoutTemperature.contains(.apple))
+  }
+
+  func testAppleSuggestsALongerTimeout() {
+    XCTAssertEqual(ModelProfiles.suggestedTimeoutSeconds[.apple], 60)
+    XCTAssertNil(ModelProfiles.suggestedTimeoutSeconds[.openAICompatible])
+    XCTAssertEqual(ModelProfiles.defaultTimeoutSeconds, 30)
+  }
+
+  func testOnlyAppleRunsWithoutEndpointOrKey() {
+    XCTAssertEqual(ModelProfiles.kindsWithoutEndpointOrKey, [.apple])
+  }
 }
