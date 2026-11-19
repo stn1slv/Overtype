@@ -15,6 +15,9 @@
 - Q: Which macOS versions should the Apple provider support? → A: macOS 27 and later only. macOS 27 replaced the model's error types and deprecated the macOS 26 ones, so supporting 27 only means one error family, less code, and every path testable on the development machine. Supporting macOS 26 as well was rejected because it doubles the error mapping for a version whose path could only be checked by unit tests here. Users on macOS 26 and earlier see the typed "requires macOS 27" error.
 - Q: Which safety-filter mode should the Apple provider use? → A: Apple's "permissive content transformations" mode, fixed for every Apple run, with no setting. Overtype only transforms text the user selected, which is the case Apple designed this mode for, and it refuses less ordinary text about sensitive subjects. The default mode was rejected because it produces more false refusals; a per-provider setting was rejected as configuration almost no user would change.
 - Q: On macOS 13 to 26, how should the Settings Providers tab treat the Apple kind? → A: Show it, labelled as requiring macOS 27. The user can still save it (for example in a configuration shared with a newer Mac), and a run produces the typed "requires macOS 27" error. Hiding it was rejected because the picker would then disagree with a configuration that already contains an Apple provider.
+- Q: Should an explicit creativity (temperature) value ever be withheld for the Apple model? → A: No. The 2026-11-19 diagnostic found no rejected range (0, 1, 2, 5 and -1 all succeeded), so an explicit value is always passed. (Recorded after cross-artifact analysis finding I1.)
+- Q: Which model names does the Apple provider accept? → A: An empty name and `system` both mean the on-device system model. Any other name produces the specific "model not available" error naming it, instead of silently falling back. (Recorded after analysis finding I2.)
+- Q: What should happen for text in a language the model does not support? → A: The diagnostic showed the model does not reliably report it (Welsh and Amharic input got English answers instead of an error). The typed error is shown when the model does report an unsupported language; otherwise the result is written as for any other answer. The README lists the supported languages and warns that other languages may get English or wrong answers. (Recorded after analysis finding U1.)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -55,7 +58,7 @@ A user adds the Apple provider without code: either by choosing it in the Settin
 
 ### User Story 3 - Clear errors when the model cannot run (Priority: P1)
 
-When the on-device model cannot serve a request, the user sees a specific, human-readable reason and what to do about it, and the selection is untouched. The reasons that matter are: the macOS version is too old, the Mac is not eligible for Apple Intelligence, Apple Intelligence is turned off, the model is still downloading or not ready, the selection is too long for the model, the model's safety rules refused the content, the model does not support the text's language, or the system limited how often Overtype may call the model.
+When the on-device model cannot serve a request, the user sees a specific, human-readable reason and what to do about it, and the selection is untouched. The reasons that matter are: the macOS version is too old, the Mac is not eligible for Apple Intelligence, Apple Intelligence is turned off, the model is still downloading or not ready, the selection is too long for the model, the model's safety rules refused the content, the model reports that it does not support the text's language, or the system limited how often Overtype may call the model.
 
 **Why this priority**: Unlike a cloud provider, most failures here are caused by the device state, and each has a different fix (update macOS, turn on Apple Intelligence in System Settings, wait for the download, shorten the selection). A generic error would leave the user unable to act, which violates the "no silent failure" rule.
 
@@ -69,7 +72,7 @@ When the on-device model cannot serve a request, the user sees a specific, human
 4. **Given** the model is still downloading or otherwise not ready, **When** the user runs an Apple action, **Then** an error says the model is not ready yet and to try again later.
 5. **Given** the selection plus the action's prompt is too long for the model, **When** the action runs, **Then** an error says the selection is too long for the on-device model, and nothing is written.
 6. **Given** the model's safety rules block the request or the model refuses, **When** the action runs, **Then** an error says the on-device model declined to process this text, and nothing is written.
-7. **Given** the text is in a language the model does not support, **When** the action runs, **Then** an error names the language problem, and nothing is written.
+7. **Given** the model reports that the text's language is unsupported, **When** the action runs, **Then** an error names the language problem, and nothing is written.
 8. **Given** the system rate-limits Overtype's use of the model, **When** the action runs, **Then** the run gets at most the one automatic retry that transient failures already get, and if it still fails the user sees a specific "temporarily limited" error.
 
 ---
@@ -86,7 +89,7 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 
 1. **Given** an action bound to an Apple provider with Automatic settings, **When** the editor shows the caption, **Then** it names exactly the values the run will use.
 2. **Given** the Apple model does not support a reasoning setting, **When** the editor is shown, **Then** no reasoning values are offered for it.
-3. **Given** an action sets an explicit creativity value, **When** it runs against the Apple provider, **Then** the value is passed to the model if it is within the model's accepted range, and is withheld with a warning log otherwise.
+3. **Given** an action sets an explicit creativity value, **When** it runs against the Apple provider, **Then** the value is always passed to the model; the model accepts any value, so none is withheld.
 
 ---
 
@@ -94,7 +97,7 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 
 - **Overtype is a background accessory app.** The target application, not Overtype, is frontmost during every run. If the operating system restricts or rate-limits model use by apps that are not in the foreground, the feature fails in normal use. This MUST be verified by a recorded diagnostic run on a real machine before the plan is final (Principle III), and the result recorded in `docs/compatibility.md`.
 - A configuration with the Apple kind is loaded on macOS 13 to 26. It MUST load without error and the provider MUST be listed; only running it produces the "requires a newer macOS" error. The configuration MUST NOT be rewritten or the provider dropped.
-- The configured model name is empty or unknown. The run uses the default system model when the name is empty; an unknown name produces a specific error naming the model instead of silently falling back.
+- The configured model name is empty, `system`, or something else. Empty and `system` both use the on-device system model; any other name produces a specific error naming the model instead of silently falling back.
 - The model is available when Settings is open but becomes unavailable before the run (for example, Apple Intelligence is turned off). Availability is checked at the start of each run, not cached.
 - The user presses Escape during a long generation. Generation stops promptly and no partial result is written.
 - The provider time limit is reached during generation. The run ends with the standard timeout error and the selection is unchanged.
