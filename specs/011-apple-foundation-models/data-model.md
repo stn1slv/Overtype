@@ -12,9 +12,9 @@ New case `apple`, raw value `"apple"`. Existing raw values are unchanged, so exi
 | `kind` | `"apple"` |
 | `baseURL` | Always `nil` when saved from Settings. A hand-edited value is loaded but ignored by the provider. |
 | `defaultModel` | `"system"`, pre-filled in Settings (`ModelProfiles.suggestedDefaultModel[.apple]`). An empty value (hand-edited) also means the system model; any other value fails the run with `modelNotAvailable`. |
-| `timeoutSeconds` | As for every kind. README recipe uses 60. |
+| `timeoutSeconds` | As for every kind. Settings pre-fill 60 for a new Apple provider (`ModelProfiles.suggestedTimeoutSeconds`). |
 | `retryDelaySeconds` | As for every kind. |
-| `keychainKey` | Always `nil` when saved from Settings. Switching an existing provider to `.apple` deletes its stored Keychain item. A hand-edited value is ignored. |
+| `keychainKey` | Always `nil` when saved from Settings. Switching an existing provider to `.apple` deletes its stored Keychain item, unless another provider names the same item. Saving an Apple record without a kind change drops a hand-edited reference and keeps the item. A hand-edited value is ignored by the provider. |
 
 Example record:
 
@@ -37,7 +37,7 @@ New cases. Each gets an `errorDescription`, an `isRetryable` value and a payload
 | `onDeviceModelUnavailable(OnDeviceModelUnavailability)` | reason | no | `on-device model unavailable` |
 | `contextWindowExceeded(tokenLimit: Int)` | limit in tokens | no | `context window exceeded` |
 | `unsupportedLanguage(code: String)` | language code | no | `unsupported language` |
-| `rateLimited` | none | **yes** | `rate limited` |
+| `rateLimited(resetDate: Date?)` | end of the limit, if known | **yes** when the reset is unknown or at most 5 s away; the pause lasts until the reset | `rate limited` |
 | `onDeviceModelFailed(message: String)` | Apple's description | no | `on-device model failed` |
 
 Reused cases: `.responseBlocked(reason:)`, `.timeout`, `.cancelled`, `.modelNotAvailable(model:)`, `.emptyResponse`.

@@ -41,8 +41,8 @@ Add a fifth provider kind, `apple`, that runs Overtype actions on Apple's on-dev
 | V. Privacy | No network, no key, no logging of text (only `logLabel`). The provider list shows "On this Mac (no network)" so the user sees where text goes. `docs/privacy.md` updated. |
 | VI. No Silent Failure | Every unavailability reason and framework error has a specific typed message (data-model.md). Cancellable through structured concurrency (measured 0.32 s). Hard timeout through a task-group race. |
 | VII. Native Stack | System framework only, no new package. No force unwrap. Swift 5.9 mode kept. The app stays macOS 13+; the framework is weak-linked (verified by spike, re-verified on the built app). |
-| VIII. Verification | Pure mapping, messages, retryability, profile and settings logic are unit-tested. The model call is system-boundary code, covered by quickstart Q1 to Q9 in `docs/compatibility.md`. |
-| Platform constraints | Build now requires Xcode 27; CI and release use the `xcode-27` preview runner (user decision, research R2), pinned to `/Applications/Xcode_27.2.app`, the toolchain the provider was verified with, because `/Applications/Xcode.app` on that image is Xcode 27.1. |
+| VIII. Verification | Pure mapping, messages, retryability, profile and settings logic are unit-tested. The model call is system-boundary code, covered by quickstart Q1 to Q10 in `docs/compatibility.md`. |
+| Platform constraints | Build now requires Xcode 27; CI and release use the `xcode-27` preview runner (user decision, research R2), pinned to `/Applications/Xcode_27.2.app`, the toolchain the provider was verified with, because `/Applications/Xcode.app` on that image is Xcode 27.1. The Select Xcode step lists the installed versions first, and the release fails unless `otool` shows FoundationModels as `LC_LOAD_WEAK_DYLIB`, because CI runs only on macOS 27. |
 
 Passes with the three dated exceptions E1 to E3 below.
 
@@ -79,7 +79,9 @@ Tests/OvertypeTests/
 ├── ProviderErrorMessageTests.swift           # + messages for new cases
 ├── ProviderErrorRetryTests.swift             # + retryability for new cases
 ├── ModelProfilesTests.swift                  # + apple row, resolver output for apple
-└── SettingsReloadTests.swift (or a new SettingsProviderSaveTests.swift)  # apple save drops URL/key
+├── ProviderSettingsRuleTests.swift           # NEW: save rules, stale-key handling, model field on kind change, Actions override warning
+├── GenerationParameterResolverTests.swift    # + resolver output for apple
+└── RetryDelayClampTests.swift                # + pause until a rate limit resets
 
 .github/workflows/ci.yml, release.yml          # runs-on: xcode-27
 README.md, docs/privacy.md, docs/compatibility.md, CLAUDE.md
@@ -93,7 +95,7 @@ README.md, docs/privacy.md, docs/compatibility.md, CLAUDE.md
 - **Model check**: a model other than empty or `system` throws `.modelNotAvailable(model:)` (research R13).
 - **Generation**: `LanguageModelSession(model: SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations), instructions: request.systemPrompt)`, then `respond(to: prompt, options: GenerationOptions(temperature: request.temperature))`. Blank content throws `.emptyResponse`.
 - **Timeout**: throwing task group of the generation and `Task.sleep(timeoutSeconds)`; first to finish wins, `cancelAll()` on the rest.
-- **Retry**: `.rateLimited` and `.timeout` get the existing single retry; everything new is permanent (data-model.md).
+- **Retry**: `.timeout` gets the existing single retry (user decision). `.rateLimited(resetDate:)` gets it only when the reset is at most 5 s away or unknown, and `ActionEngine.transientRetryPauseSeconds` waits until the reset; everything else new is permanent (data-model.md).
 - **Settings rule**: one `Set<ProviderKind>` (`ModelProfiles.kindsWithoutEndpointOrKey = [.apple]`) drives both the form (hide fields) and `saveProvider` (store nil, delete stale key, skip the Base URL check for the hidden field), so the two cannot disagree. `ProvidersTab.changeKind` sets the model to `system` when an existing provider switches to Apple with any other model (narrow exception to feature 010's FR-019, user decision 2026-11-19).
 - **ActionEngine**: no change. Parameter resolution, retry and error display already handle the new kind and cases generically.
 
@@ -113,3 +115,8 @@ Explicit, dated exceptions to Principle IV ("No other file may need to change"),
 - Reason: Implementation pass 2 recorded the Apple Settings decisions (model set to `system` on switch, hidden Base URL not validated) and pinned CI and release to Xcode 27.2.
 - Items: Design Notes "Settings rule", Constitution Check "Platform constraints"
 - Approved: approve all
+
+### Revision: Implementation Sync 2026-11-19 [Sync: apple-review-fixes]
+- Reason: Review rounds 1 and 2 changed the retry rule for rate limits, the Settings rules, the test files, and added release safety checks.
+- Items: Design Notes "Retry", Constitution Check "VIII. Verification", Constitution Check "Platform constraints", Project Structure (test files)
+- Approved: "all" (user answer to the multi-model review round 2, item 2, 2026-11-19)

@@ -30,7 +30,7 @@ All findings below come from the macOS 27.2 SDK interface (`FoundationModels.swi
 | Framework error | Overtype `ProviderError` | Retryable |
 |---|---|---|
 | `LanguageModelError.contextSizeExceeded(c)` | `.contextWindowExceeded(tokenLimit: c.contextSize)` (new) | no |
-| `.rateLimited` | `.rateLimited` (new) | yes (one retry) |
+| `.rateLimited(c)` | `.rateLimited(resetDate: c.resetDate)` (new) | yes when the reset is unknown or at most 5 s away; `ActionEngine` waits until the reset |
 | `.guardrailViolation` | `.responseBlocked(reason: "the on-device safety guardrails")` (existing) | no |
 | `.refusal` | `.responseBlocked(reason: "the on-device model refused")` (existing) | no |
 | `.unsupportedLanguageOrLocale(c)` | `.unsupportedLanguage(code: c.languageCode.identifier)` (new) | no |

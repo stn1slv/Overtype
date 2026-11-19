@@ -103,6 +103,7 @@
 - [X] T024 Run `make lint` and `make test`; fix lint findings in changed files only
 - [X] T025 Build with ./scripts/build-app.sh and confirm `otool -l Overtype.app/Contents/MacOS/Overtype` shows `LC_LOAD_WEAK_DYLIB` for FoundationModels.framework (research R3); confirm `rg NSPasteboard Sources/ Vendor/` has no new match
 - [ ] T026 Execute quickstart Q1 to Q9 against the real app and record the results, including the Q4 background rate-limit finding, in docs/compatibility.md; the unsupported-language error is checked only by the T016 unit test, because the model does not reliably report it (spec US3 scenario 7)
+- [ ] T027 Execute quickstart Q10 (launch on macOS 26 or older) and record the result in docs/compatibility.md [Sync: apple-review-fixes]
 
 ---
 
@@ -111,7 +112,7 @@
 - Phase 1 (T001, T002) is independent of the code and can run any time before the PR.
 - Phase 2 blocks everything: T003 → T004 → T005; T006 and T007 after T004.
 - US1 (T008 to T011) needs Phase 2. US2 needs T008's `systemModelID` (T012). US3 tests need T009. US4 needs T012's file edits done first (same file, ModelProfiles.swift).
-- Polish: T020 to T023 after US1 to US4; T024 → T025 → T026 last.
+- Polish: T020 to T023 after US1 to US4; T024 → T025 → T026 last; T027 needs a Mac with macOS 26 or older.
 
 ## Parallel Opportunities
 
