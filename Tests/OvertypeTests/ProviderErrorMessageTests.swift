@@ -92,4 +92,45 @@ final class ProviderErrorMessageTests: XCTestCase {
     // 200 characters plus the ellipsis.
     XCTAssertEqual(result.count, 201)
   }
+
+  // MARK: - Apple on-device model (specs/011, data-model.md)
+
+  func testOnDeviceUnavailabilityMessagesAreSpecific() {
+    let expected: [(OnDeviceModelUnavailability, String)] = [
+      (.operatingSystemTooOld, "macOS 27"),
+      (.deviceNotEligible, "does not support Apple Intelligence"),
+      (.appleIntelligenceNotEnabled, "Turn on Apple Intelligence in System Settings"),
+      (.modelNotReady, "not ready yet"),
+      (.unknown, "not available right now"),
+    ]
+    var seen = Set<String>()
+    for (reason, fragment) in expected {
+      let message = ProviderError.onDeviceModelUnavailable(reason).errorDescription ?? ""
+      XCTAssertTrue(message.contains(fragment), message)
+      XCTAssertTrue(message.hasSuffix("Nothing was changed."), message)
+      seen.insert(message)
+    }
+    XCTAssertEqual(seen.count, expected.count, "every reason needs its own message")
+  }
+
+  func testContextWindowMessageNamesTheLimitAndTheAnswer() {
+    let message = ProviderError.contextWindowExceeded(tokenLimit: 8192).errorDescription ?? ""
+    XCTAssertTrue(message.contains("8192 tokens"), message)
+    // The on-device model also hits the limit when its answer runs on too
+    // long (research R7), so the message must not blame the selection alone.
+    XCTAssertTrue(message.contains("the answer"), message)
+    XCTAssertTrue(message.hasSuffix("Nothing was changed."), message)
+  }
+
+  func testOtherOnDeviceMessages() {
+    let language = ProviderError.unsupportedLanguage(code: "cy").errorDescription ?? ""
+    XCTAssertTrue(language.contains("(cy)"), language)
+    let limited = ProviderError.rateLimited.errorDescription ?? ""
+    XCTAssertTrue(limited.contains("temporarily limited"), limited)
+    let failed = ProviderError.onDeviceModelFailed(message: "Something broke").errorDescription
+    XCTAssertEqual(failed, "The on-device model failed (Something broke). Nothing was changed.")
+    for message in [language, limited] {
+      XCTAssertTrue(message.hasSuffix("Nothing was changed."), message)
+    }
+  }
 }

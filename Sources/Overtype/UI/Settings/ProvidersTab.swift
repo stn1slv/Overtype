@@ -21,7 +21,7 @@ public struct ProvidersTab: View {
   /// config may still name a kind this list does not, and editing such a
   /// provider must not silently change its kind.
   private var selectableKinds: [ProviderKind] {
-    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic, .ollama]
+    var kinds: [ProviderKind] = [.openAICompatible, .gemini, .anthropic, .ollama, .apple]
     if let current = editingProvider?.kind, !kinds.contains(current) {
       kinds.append(current)
     }
@@ -43,7 +43,14 @@ public struct ProvidersTab: View {
     case .gemini: return "Default: generativelanguage.googleapis.com"
     case .anthropic: return "Default: api.anthropic.com"
     case .ollama: return "Default: http://localhost:11434"
+    // Not shown: the field is hidden for this kind (kindsWithoutEndpointOrKey).
+    case .apple: return ""
     }
+  }
+
+  /// Whether the form shows the Base URL and API Key fields for `kind`.
+  private func usesEndpointAndKey(_ kind: ProviderKind) -> Bool {
+    !ModelProfiles.kindsWithoutEndpointOrKey.contains(kind)
   }
 
   /// Placeholder shown inside the empty API key field.
@@ -75,6 +82,11 @@ public struct ProvidersTab: View {
     case .gemini: return "Gemini"
     case .anthropic: return "Anthropic"
     case .ollama: return "Ollama"
+    case .apple:
+      // Shown on older macOS too, so the picker matches a config that already
+      // contains an Apple provider (spec Clarifications).
+      if #available(macOS 27, *) { return "Apple on-device" }
+      return "Apple on-device (requires macOS 27)"
     }
   }
 
@@ -108,7 +120,12 @@ public struct ProvidersTab: View {
                   .font(.caption)
                   .foregroundColor(.secondary)
               }
-              if let baseURL = provider.baseURL {
+              if !usesEndpointAndKey(provider.kind) {
+                // Principle V: the user can see where the text goes.
+                Text("On this Mac (no network)")
+                  .font(.caption)
+                  .foregroundColor(.secondary)
+              } else if let baseURL = provider.baseURL {
                 Text(baseURL.absoluteString)
                   .font(.caption)
                   .foregroundColor(.secondary)
@@ -152,9 +169,15 @@ public struct ProvidersTab: View {
               }
             }
 
-            TextField(
-              "Base URL", text: $baseURLString,
-              prompt: Text(baseURLPlaceholder(for: kind)))
+            if usesEndpointAndKey(kind) {
+              TextField(
+                "Base URL", text: $baseURLString,
+                prompt: Text(baseURLPlaceholder(for: kind)))
+            } else {
+              Text("Runs on this Mac. No network, no API key.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
 
             TextField("Default Model", text: $defaultModel)
 
@@ -174,9 +197,11 @@ public struct ProvidersTab: View {
                 + "Only transient failures (network errors, timeouts, rate limits, "
                 + "server errors) are retried. Set to 0 to retry immediately.")
 
-            SecureField(
-              "API Key", text: $apiKey,
-              prompt: Text(apiKeyPrompt(for: kind)))
+            if usesEndpointAndKey(kind) {
+              SecureField(
+                "API Key", text: $apiKey,
+                prompt: Text(apiKeyPrompt(for: kind)))
+            }
           }
         }
         .padding()

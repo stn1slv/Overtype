@@ -276,4 +276,25 @@ final class GenerationParameterResolverTests: XCTestCase {
     XCTAssertNil(request.removing(.temperature))
     XCTAssertNil(request.removing(.reasoning))
   }
+
+  // MARK: - Apple on-device model (specs/011 US4)
+
+  func testAppleSendsTemperatureAndNeverReasoning() {
+    let resolved = resolve(.apple, "system", temperature: 0.3, reasoning: "low")
+    XCTAssertEqual(resolved.temperature, 0.3)
+    XCTAssertNil(resolved.reasoning)
+    XCTAssertNil(resolved.automaticReasoning)
+    XCTAssertEqual(
+      resolved.withheldOverrides,
+      [WithheldOverride(parameter: .reasoning, reason: .providerIgnores)])
+  }
+
+  func testAppleNeverWithholdsTemperature() {
+    // Spec US4 scenario 3: the model accepted every value tried.
+    for value in [0.0, 2.0, 5.0] {
+      let resolved = resolve(.apple, "system", temperature: value)
+      XCTAssertEqual(resolved.temperature, value)
+      XCTAssertTrue(resolved.withheldOverrides.isEmpty)
+    }
+  }
 }

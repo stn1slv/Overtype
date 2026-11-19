@@ -7,7 +7,7 @@ It reads and writes text through the macOS Accessibility API and never uses the 
 ## Features
 
 - **No clipboard**: Overtype never touches `NSPasteboard`. It reads and types text only through the macOS Accessibility API (`AXUIElement` and `CGEvent`).
-- **AI providers**: OpenAI (the default model is `gpt-6-luna`), Google Gemini, Anthropic Claude, and Ollama for models that run locally on your Mac.
+- **AI providers**: OpenAI (the default model is `gpt-6-luna`), Google Gemini, Anthropic Claude, Ollama for models that run locally on your Mac, and Apple's on-device model (macOS 27 and later).
 - **Global hotkeys**: select text in any application (for example MS Teams or Apple Notes), press a shortcut such as ⌃⌥⌘G, and the selection is replaced inline.
 - **Privacy**: by default, selected text is never written to disk and logs are redacted. Unredacted text appears in logs only if you explicitly turn on debug logging.
 
@@ -120,7 +120,7 @@ You don't need to know which parameters a model accepts. Overtype has built-in p
 You can override either setting per action, in the Actions editor or in `config.json`:
 
 - `"temperature"`: a number from 0.0 to 2.0. Leave the key out for Automatic. Overtype does not send it to a model that rejects it, or to a model whose provider says to leave it unset (for example Gemini 3.x), and the editor tells you when that happens.
-- `"reasoningEffort"`: the provider's own value: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` for OpenAI; `low` to `max` for Anthropic; `minimal` to `high` for Gemini. Leave the key out for Automatic. For a model Overtype has a profile for, a value the model does not support is not sent, and Automatic applies instead. Gemini 2.5 models take a thinking budget rather than a level, so a text value is never sent to them. For other models the value is sent as written. Ollama does not use this setting, and the editor does not save one for it.
+- `"reasoningEffort"`: the provider's own value: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` for OpenAI; `low` to `max` for Anthropic; `minimal` to `high` for Gemini. Leave the key out for Automatic. For a model Overtype has a profile for, a value the model does not support is not sent, and Automatic applies instead. Gemini 2.5 models take a thinking budget rather than a level, so a text value is never sent to them. For other models the value is sent as written. Ollama and the Apple on-device model do not use this setting, and the editor does not save one for them.
 
 For an OpenAI model without a profile, Overtype sends only what the action sets. If the API rejects `temperature` or `reasoning_effort` by name and the value was valid (a temperature from 0.0 to 2.0, or an effort from the list above), Overtype retries once without it (the HUD shows "Retrying...") and skips that value for that model until you quit the app. If you change the value, Overtype tries it again. A rejected value outside those ranges, such as a typo, shows up as the API error instead.
 
@@ -198,7 +198,7 @@ The shipped default configuration has no Anthropic provider, so a fresh install 
 
 ### Ollama (local models)
 
-Overtype calls the `/api/chat` endpoint of a local [Ollama](https://ollama.com) service directly. This is the one provider where **your text never leaves your Mac**: with the default configuration, the only address Overtype contacts is `localhost`, so a run is designed to work with the machine fully offline. You can add the provider in **Settings → Providers** (choose "Ollama" as the Kind) or by editing the configuration. Neither needs a rebuild.
+Overtype calls the `/api/chat` endpoint of a local [Ollama](https://ollama.com) service directly. With this provider (and with the Apple on-device model below) **your text never leaves your Mac**: with the default configuration, the only address Overtype contacts is `localhost`, so a run is designed to work with the machine fully offline. You can add the provider in **Settings → Providers** (choose "Ollama" as the Kind) or by editing the configuration. Neither needs a rebuild.
 
 1. Install Ollama and download a model yourself. Overtype never downloads, installs, starts or stops anything for you:
 
@@ -245,6 +245,36 @@ Overtype calls the `/api/chat` endpoint of a local [Ollama](https://ollama.com) 
 > **Note:** unlike Anthropic, Ollama **does** receive an action's `"temperature"` when the action sets one. The service applies it as a generation option, so every model accepts it. On Automatic, Overtype sends no temperature and the model's own default applies.
 
 The shipped default configuration has no Ollama provider, so a fresh install adds no provider or shortcut until you add the block above.
+
+### Apple on-device model (macOS 27)
+
+Overtype can use the language model built into macOS through Apple's FoundationModels framework. The model runs on your Mac, so **your text never leaves your Mac**, and you need no account, no API key and no extra software. Overtype calls the framework directly; it does not use the `fm` command-line tool.
+
+1. Check the requirements: macOS 27 or later, a Mac that supports Apple Intelligence, Apple Intelligence turned on in System Settings, and the model fully downloaded. On older macOS versions the provider is still listed, but a run shows "requires macOS 27".
+
+2. In **Settings → Providers**, add a provider and choose **Apple on-device** as the Kind. The form has no Base URL and no API Key fields. Or add this block to the `"providers"` array in `config.json`:
+
+   ```json
+   {
+     "id": "apple",
+     "kind": "apple",
+     "defaultModel": "system",
+     "timeoutSeconds": 60,
+     "retryDelaySeconds": 0.5
+   }
+   ```
+
+   `system` is the only model name (an empty name means the same). macOS does not let apps choose another on-device model.
+
+3. Point an action at the provider by setting its `"providerID"` to `"apple"`.
+
+> **Speed and size.** A short sentence takes well under a second. The answer is generated at about 55 tokens per second, so a 5,000-character selection took about 24 seconds in our test. That is why the block above uses a 60-second timeout. The model's context is 8,192 tokens for the selection, the prompt and the answer together; a longer text shows "too long for the on-device model" and nothing is changed.
+
+> **Languages.** The model supports Danish, Dutch, English, French, German, Italian, Japanese, Korean, Norwegian Bokmål, Portuguese, Spanish, Swedish, Turkish, Vietnamese and Chinese (with regional variants). For other languages it does not always report an error: in our test it answered Welsh and Amharic text in English. Check the result before you rely on it for other languages.
+
+> **Settings.** The model accepts an action's `"temperature"`. It has no reasoning setting, so the editor hides that picker. Overtype uses Apple's safety mode for transforming text the user provides, which refuses less ordinary text than the default mode; Apple's base safety rules still apply, and a refusal shows "blocked the response" with nothing changed.
+
+The shipped default configuration has no Apple provider.
 
 ## Security and privacy
 

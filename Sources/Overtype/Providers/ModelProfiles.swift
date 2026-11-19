@@ -62,8 +62,15 @@ enum ModelProfiles {
   /// Model pre-filled when the user adds a provider of this kind in Settings
   /// (FR-018). A kind without an entry starts with an empty field.
   static let suggestedDefaultModel: [ProviderKind: String] = [
-    .openAICompatible: "gpt-6-luna"
+    .openAICompatible: "gpt-6-luna",
+    .apple: AppleFoundationModelProvider.systemModelID,
   ]
+
+  /// Kinds that run on this Mac without an endpoint address or an API key
+  /// (specs/011 FR-012). The Providers form hides both fields for them, and
+  /// `SettingsViewModel.saveProvider` stores neither and deletes a stale key;
+  /// both read this one set, so they cannot disagree.
+  static let kindsWithoutEndpointOrKey: Set<ProviderKind> = [.apple]
 
   /// Kinds whose requests never carry a temperature, whatever the action sets.
   /// Anthropic: feature 007 drops it for every model, because the newest ones
@@ -110,7 +117,25 @@ enum ModelProfiles {
   private static let geminiSource =
     "ai.google.dev: Gemini thinking, latest-model and Gemini 3.x guides, read 2026-10-17"
 
-  static let all: [ModelProfile] = openAI + anthropic + gemini
+  static let all: [ModelProfile] = openAI + anthropic + gemini + apple
+
+  private static let appleSource =
+    "on-device diagnostic 2026-11-19, macOS 27.2.1, AFM 3 Core Advanced: any temperature "
+    + "accepted, every reasoning level rejected (unsupportedCapability)"
+
+  /// Apple's on-device model (specs/011 research R6).
+  ///
+  /// EVIDENCE OVER DOCUMENTATION: values come from a diagnostic run against
+  /// the real model, recorded in docs/compatibility.md. Temperatures 0, 1, 2,
+  /// 5 and -1 all succeeded, so `.accepted`. Every reasoning level (light,
+  /// moderate, deep, custom) failed at once with `unsupportedCapability`, so
+  /// `reasoning: nil` and `.apple` has no `reasoningValues` entry. Do not add
+  /// reasoning without a new diagnostic run.
+  private static let apple: [ModelProfile] = [
+    ModelProfile(
+      kind: .apple, modelID: AppleFoundationModelProvider.systemModelID, reasoning: nil,
+      temperature: .accepted, source: appleSource)
+  ]
 
   /// OpenAI GPT-6 family (research R1). The guide says to remove `temperature`
   /// "when reasoning effort is not `none`"; that Luna and Sol accept it AT

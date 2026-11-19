@@ -11,7 +11,9 @@ permissions:
 jobs:
   release:
     name: Build & Release App
-    runs-on: macos-latest
+    # The Apple provider uses the macOS 27 FoundationModels API, which needs
+    # Xcode 27; macos-latest ships Xcode 26 (specs/011 research R2).
+    runs-on: xcode-27
     
     steps:
       - name: Checkout code

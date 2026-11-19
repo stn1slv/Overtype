@@ -361,3 +361,41 @@ Note: the feature was merged with Q3 to Q6 still pending, as an explicit, dated 
 | Q4 | Unprofiled OpenAI model that rejects `temperature` (SC-003) | One "Retrying..." on the first run; one request on later runs | pending |
 | Q5 | Automatic per profile shape and latency (SC-005) | First-request success for each shape; lower median than the default level | pending |
 | Q6 | Actions and Providers editor (T042) | Automatic defaults, caption, warnings, hidden picker for Ollama, `gpt-6-luna` pre-fill | pending |
+
+### Apple on-device model (specs/011-apple-foundation-models)
+
+#### Diagnostic run (executed 2026-11-19)
+
+macOS 27.2.1, Xcode 27.2, model "AFM 3 Core Advanced", `SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations)`, one fresh `LanguageModelSession` per request, run from a command-line process.
+
+| Probe | Result |
+|---|---|
+| `availability`, `contextSize`, `capabilities.contains(.reasoning)` | `available`, 8192 tokens, `false` |
+| Temperature 0, 1, 2, 5, -1; greedy sampling | all succeed in about 0.23 s |
+| `ContextOptions.reasoningLevel` light, moderate, deep, custom("none") | all fail at once: `LanguageModelError.unsupportedCapability` |
+| 5,000 characters of English prose (1,297 tokens) | succeeds in 23.8 s, 1,299 output tokens |
+| 40,000 characters (10,362 tokens) | `contextSizeExceeded` in 0.04 s, before any generation |
+| 5,000 characters of one repeated sentence | the model loops until the context is full: `contextSizeExceeded` (8193 of 8192 tokens) after 114 to 166 s |
+| `maximumResponseTokens: 20` on long prose | succeeds with truncated text and no error (output 20 tokens) |
+| Cancel 0.3 s into a long generation | `CancellationError` 0.32 s after the start |
+| 12 requests back to back | all succeed, about 0.24 s each, no `rateLimited` |
+| Welsh and Amharic input | no `unsupportedLanguageOrLocale`; answers came back in English |
+| `supportedLanguages` | da, de, en, es, fr, it, ja, ko, nb, nl, pt, sv, tr, vi, zh and regional variants |
+
+Consequences in the code: no reasoning values for the `apple` kind; temperature always passed; no `maximumResponseTokens` (a cap truncates silently); the provider timeout bounds a runaway answer; `contextSizeExceeded` maps to a message that names the answer as well as the selection. A spike binary with deployment target macOS 13 got `LC_LOAD_WEAK_DYLIB` for FoundationModels.framework.
+
+#### End-to-end acceptance
+
+Pending: quickstart Q1 to Q9 (`specs/011-apple-foundation-models/quickstart.md`) against the built app. Q4 checks whether macOS rate-limits a menu bar app that is not frontmost; the command-line run above cannot answer that.
+
+| # | Scenario | Expected | Result |
+|---|----------|----------|--------|
+| Q1 | Grammar fix of a short sentence in TextEdit | Replaced in under 3 s with Reading, Thinking, Writing | pending |
+| Q2 | Q1 with Wi-Fi off | Same result | pending |
+| Q3 | Escape 1 s into a long rewrite | HUD hides within 1 s, text unchanged | pending |
+| Q4 | Q1 fifteen times in a row | Record any "temporarily limited" error | pending |
+| Q5 | About 45,000 characters | "too long for the on-device model", text unchanged | pending |
+| Q6 | Apple Intelligence turned off | "Turn on Apple Intelligence" error, text unchanged | pending |
+| Q7 | Actions editor | No reasoning picker, temperature control present | pending |
+| Q8 | OpenAI provider with a key switched to Apple | No `baseURL` and no `keychainKey` in config; Keychain item removed | pending |
+| Q9 | Settings-created Apple provider record | Matches `data-model.md` | pending |

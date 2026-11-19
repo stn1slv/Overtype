@@ -219,6 +219,10 @@ public final class SettingsViewModel: ObservableObject {
     } else {
       url = nil
     }
+    // A kind without an endpoint or key (Apple on-device) stores neither and
+    // ignores a key typed into the form (specs/011 FR-012).
+    let storesEndpointAndKey = !ModelProfiles.kindsWithoutEndpointOrKey.contains(kind)
+    let apiKey = storesEndpointAndKey ? apiKey : ""
 
     // Fallible Keychain work runs BEFORE any published state is mutated, so a
     // failed store never leaves the in-memory config pointing at a key that
@@ -229,7 +233,10 @@ public final class SettingsViewModel: ObservableObject {
         let original = providers[index]
         var provider = original
         provider.kind = kind
-        provider.baseURL = url
+        provider.baseURL =
+          Self.storedEndpointAndKey(
+            kind: kind, url: url, keychainKey: nil
+          ).url
         provider.defaultModel = trimmedModel
         provider.timeoutSeconds = timeout
         provider.retryDelaySeconds = retryDelay
@@ -246,7 +253,8 @@ public final class SettingsViewModel: ObservableObject {
         // The Keychain deletion cannot be rolled back if the save below fails.
         // That is the safe direction to fail in: the worst case is a credential
         // the user has to re-enter, versus one silently sent somewhere new.
-        if original.kind != kind, apiKey.isEmpty {
+        // A kind without a key (Apple on-device) never keeps one (FR-012).
+        if (original.kind != kind && apiKey.isEmpty) || !storesEndpointAndKey {
           if let staleKey = provider.keychainKey {
             try? KeychainStore.shared.delete(key: staleKey)
           }
@@ -280,14 +288,15 @@ public final class SettingsViewModel: ObservableObject {
         try KeychainStore.shared.store(key: keychainKey, value: apiKey)
       }
 
+      let stored = Self.storedEndpointAndKey(kind: kind, url: url, keychainKey: keychainKey)
       let newProvider = ProviderConfig(
         id: slug,
         kind: kind,
-        baseURL: url,
+        baseURL: stored.url,
         defaultModel: trimmedModel,
         timeoutSeconds: timeout,
         retryDelaySeconds: retryDelay,
-        keychainKey: keychainKey
+        keychainKey: stored.keychainKey
       )
       providers.append(newProvider)
       do {
@@ -302,6 +311,15 @@ public final class SettingsViewModel: ObservableObject {
         throw error
       }
     }
+  }
+
+  /// What a saved provider record keeps of the endpoint and the Keychain
+  /// reference. Kinds in `ModelProfiles.kindsWithoutEndpointOrKey` keep
+  /// neither (specs/011 FR-012, research R12). Pure, unit-tested.
+  static func storedEndpointAndKey(kind: ProviderKind, url: URL?, keychainKey: String?) -> (
+    url: URL?, keychainKey: String?
+  ) {
+    ModelProfiles.kindsWithoutEndpointOrKey.contains(kind) ? (nil, nil) : (url, keychainKey)
   }
 
   public func deleteProvider(id: String) throws {

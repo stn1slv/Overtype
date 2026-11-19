@@ -147,4 +147,39 @@ final class ProviderErrorRetryTests: XCTestCase {
     let label = ProviderError.networkError(URLError(.notConnectedToInternet)).logLabel
     XCTAssertEqual(label, "network error")
   }
+
+  // MARK: - Apple on-device model (specs/011)
+
+  func testOnDeviceRateLimitIsRetryable() {
+    XCTAssertTrue(ProviderError.rateLimited.isRetryable)
+  }
+
+  func testOnDeviceDeterministicFailuresAreNotRetryable() {
+    let reasons: [OnDeviceModelUnavailability] = [
+      .operatingSystemTooOld, .deviceNotEligible, .appleIntelligenceNotEnabled, .modelNotReady,
+      .unknown,
+    ]
+    for reason in reasons {
+      XCTAssertFalse(ProviderError.onDeviceModelUnavailable(reason).isRetryable, "\(reason)")
+    }
+    XCTAssertFalse(ProviderError.contextWindowExceeded(tokenLimit: 8192).isRetryable)
+    XCTAssertFalse(ProviderError.unsupportedLanguage(code: "cy").isRetryable)
+    XCTAssertFalse(ProviderError.onDeviceModelFailed(message: "boom").isRetryable)
+  }
+
+  func testOnDeviceLogLabelsCarryNoPayload() {
+    let cases: [(ProviderError, String)] = [
+      (.onDeviceModelUnavailable(.modelNotReady), "on-device model unavailable"),
+      (.contextWindowExceeded(tokenLimit: 8192), "context window exceeded"),
+      (.unsupportedLanguage(code: "cy"), "unsupported language"),
+      (.rateLimited, "rate limited"),
+      (.onDeviceModelFailed(message: "secret selection text"), "on-device model failed"),
+    ]
+    for (error, label) in cases {
+      XCTAssertEqual(error.logLabel, label)
+      XCTAssertFalse(error.logLabel.contains("8192"))
+      XCTAssertFalse(error.logLabel.contains("cy"))
+      XCTAssertFalse(error.logLabel.contains("secret"))
+    }
+  }
 }
