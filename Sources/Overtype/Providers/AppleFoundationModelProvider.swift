@@ -131,8 +131,8 @@ public final class AppleFoundationModelProvider: AIProvider {
       switch modelError {
       case .contextSizeExceeded(let context):
         return .contextWindowExceeded(tokenLimit: context.contextSize)
-      case .rateLimited:
-        return .rateLimited
+      case .rateLimited(let context):
+        return .rateLimited(resetDate: context.resetDate)
       case .guardrailViolation:
         return .responseBlocked(reason: "the on-device safety guardrails")
       case .refusal:

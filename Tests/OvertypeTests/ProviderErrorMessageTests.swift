@@ -125,7 +125,7 @@ final class ProviderErrorMessageTests: XCTestCase {
   func testOtherOnDeviceMessages() {
     let language = ProviderError.unsupportedLanguage(code: "cy").errorDescription ?? ""
     XCTAssertTrue(language.contains("(cy)"), language)
-    let limited = ProviderError.rateLimited.errorDescription ?? ""
+    let limited = ProviderError.rateLimited(resetDate: nil).errorDescription ?? ""
     XCTAssertTrue(limited.contains("temporarily limited"), limited)
     let failed = ProviderError.onDeviceModelFailed(message: "Something broke").errorDescription
     XCTAssertEqual(failed, "The on-device model failed (Something broke). Nothing was changed.")

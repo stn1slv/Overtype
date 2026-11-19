@@ -399,7 +399,7 @@ The released `Overtype.app` (build from this branch) has `minos 13.0` and loads 
 
 #### End-to-end acceptance
 
-Pending: quickstart Q1 to Q9 (`specs/011-apple-foundation-models/quickstart.md`) against the built app. Q4 checks whether macOS rate-limits a menu bar app that is not frontmost; the command-line run above cannot answer that.
+Pending: quickstart Q1 to Q10 (`specs/011-apple-foundation-models/quickstart.md`) against the built app. Q4 checks whether macOS rate-limits a menu bar app that is not frontmost; the command-line run above cannot answer that.
 
 | # | Scenario | Expected | Result |
 |---|----------|----------|--------|
@@ -412,3 +412,4 @@ Pending: quickstart Q1 to Q9 (`specs/011-apple-foundation-models/quickstart.md`)
 | Q7 | Actions editor | No reasoning picker, temperature control present | pending |
 | Q8 | OpenAI provider with a key and an invalid Base URL switched to Apple | Model becomes `system`; Save succeeds; no `baseURL` and no `keychainKey` in config; Keychain item removed | pending |
 | Q9 | Settings-created Apple provider record | Matches `data-model.md` | pending |
+| Q10 | Built app on macOS 26 or older | Launches; existing providers work; an Apple action shows "requires macOS 27" | pending (needs a macOS 26 machine; CI runs only on macOS 27) |

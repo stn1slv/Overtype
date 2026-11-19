@@ -236,7 +236,7 @@ public struct ProvidersTab: View {
     // specs/010 FR-018: a new provider starts on the suggested model for its
     // kind (gpt-6-luna for OpenAI); the user can replace it.
     defaultModel = ModelProfiles.suggestedDefaultModel[kind] ?? ""
-    timeout = 30.0
+    timeout = ModelProfiles.suggestedTimeoutSeconds[kind] ?? ModelProfiles.defaultTimeoutSeconds
     retryDelay = ProviderConfig.defaultRetryDelaySeconds
     apiKey = ""
     errorMessage = nil
@@ -248,16 +248,27 @@ public struct ProvidersTab: View {
   /// holds the previous suggestion: a model the user typed is never replaced,
   /// and editing an existing provider never touches its model (FR-019).
   private func changeKind(to newKind: ProviderKind) {
-    if editingProvider == nil {
+    if newKind == .apple, !AppleFoundationModelProvider.acceptsModel(defaultModel) {
+      // Narrow exception to FR-019 (specs/011, user decision 2026-11-19): the
+      // Apple kind has exactly one model, so any other model, typed or kept
+      // from another kind, would make every run fail with "model not
+      // available". Applies when adding and when editing.
+      defaultModel = AppleFoundationModelProvider.systemModelID
+    } else if editingProvider == nil {
       let previousSuggestion = ModelProfiles.suggestedDefaultModel[kind] ?? ""
       if defaultModel.isEmpty || defaultModel == previousSuggestion {
         defaultModel = ModelProfiles.suggestedDefaultModel[newKind] ?? ""
       }
-    } else if newKind == .apple, !AppleFoundationModelProvider.acceptsModel(defaultModel) {
-      // Narrow exception to FR-019 (specs/011, user decision 2026-11-19): the
-      // Apple kind has exactly one model, so a model kept from another kind
-      // would make every run fail with "model not available".
-      defaultModel = AppleFoundationModelProvider.systemModelID
+    }
+    if editingProvider == nil {
+      // Same rule for the timeout: swap the kind's suggestion only while the
+      // slider still holds the previous kind's suggestion.
+      let previousTimeout =
+        ModelProfiles.suggestedTimeoutSeconds[kind] ?? ModelProfiles.defaultTimeoutSeconds
+      if timeout == previousTimeout {
+        timeout =
+          ModelProfiles.suggestedTimeoutSeconds[newKind] ?? ModelProfiles.defaultTimeoutSeconds
+      }
     }
     kind = newKind
   }

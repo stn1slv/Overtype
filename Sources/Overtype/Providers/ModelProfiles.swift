@@ -66,6 +66,12 @@ enum ModelProfiles {
     .apple: AppleFoundationModelProvider.systemModelID,
   ]
 
+  /// Timeout pre-filled when the user adds a provider of this kind; a kind
+  /// without an entry uses `defaultTimeoutSeconds`. The on-device model took
+  /// about 24 s for a 5,000-character selection (specs/011 research R7).
+  static let suggestedTimeoutSeconds: [ProviderKind: Double] = [.apple: 60]
+  static let defaultTimeoutSeconds: Double = 30
+
   /// Kinds that run on this Mac without an endpoint address or an API key
   /// (specs/011 FR-012). The Providers form hides both fields for them, and
   /// `SettingsViewModel.saveProvider` stores neither and deletes a stale key;

@@ -151,7 +151,15 @@ final class ProviderErrorRetryTests: XCTestCase {
   // MARK: - Apple on-device model (specs/011)
 
   func testOnDeviceRateLimitIsRetryable() {
-    XCTAssertTrue(ProviderError.rateLimited.isRetryable)
+    XCTAssertTrue(ProviderError.rateLimited(resetDate: nil).isRetryable)
+    XCTAssertTrue(ProviderError.rateLimited(resetDate: Date(timeIntervalSinceNow: 2)).isRetryable)
+    XCTAssertTrue(ProviderError.rateLimited(resetDate: Date(timeIntervalSinceNow: -60)).isRetryable)
+  }
+
+  func testOnDeviceRateLimitWithLateResetIsNotRetried() {
+    // The retry pause is at most 5 s; a later reset fails the retry too.
+    XCTAssertFalse(
+      ProviderError.rateLimited(resetDate: Date(timeIntervalSinceNow: 3600)).isRetryable)
   }
 
   func testOnDeviceDeterministicFailuresAreNotRetryable() {
@@ -172,7 +180,7 @@ final class ProviderErrorRetryTests: XCTestCase {
       (.onDeviceModelUnavailable(.modelNotReady), "on-device model unavailable"),
       (.contextWindowExceeded(tokenLimit: 8192), "context window exceeded"),
       (.unsupportedLanguage(code: "cy"), "unsupported language"),
-      (.rateLimited, "rate limited"),
+      (.rateLimited(resetDate: nil), "rate limited"),
       (.onDeviceModelFailed(message: "secret selection text"), "on-device model failed"),
     ]
     for (error, label) in cases {

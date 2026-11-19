@@ -96,7 +96,14 @@ final class AppleFoundationModelProviderTests: XCTestCase {
     guard #available(macOS 27, *) else { throw XCTSkip("needs macOS 27") }
     try assertMaps(
       LanguageModelError.rateLimited(.init(resetDate: nil, debugDescription: "")),
-      to: .rateLimited)
+      to: .rateLimited(resetDate: nil))
+    let reset = Date(timeIntervalSinceNow: 3600)
+    let mapped = AppleFoundationModelProvider.providerError(
+      from: LanguageModelError.rateLimited(.init(resetDate: reset, debugDescription: "")))
+    guard case .rateLimited(let carried) = mapped else {
+      return XCTFail("expected rateLimited, got \(mapped)")
+    }
+    XCTAssertEqual(carried, reset)
     try assertMaps(
       LanguageModelError.guardrailViolation(.init(debugDescription: "")),
       to: .responseBlocked(reason: "the on-device safety guardrails"))

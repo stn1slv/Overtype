@@ -35,4 +35,71 @@ final class ProviderSettingsRuleTests: XCTestCase {
     XCTAssertNil(provider.keychainKey)
     XCTAssertEqual(issues.issues, [])
   }
+
+  // MARK: - Form input (specs/011 FR-010, FR-012)
+
+  func testAppleIgnoresAnInvalidHiddenURLAndATypedKey() throws {
+    let input = try SettingsViewModel.validatedEndpointInput(
+      kind: .apple, baseURLString: "not a url", apiKey: "sk-123", model: "system")
+    XCTAssertNil(input.url)
+    XCTAssertEqual(input.apiKey, "")
+  }
+
+  func testAppleRejectsAnyOtherModel() {
+    XCTAssertThrowsError(
+      try SettingsViewModel.validatedEndpointInput(
+        kind: .apple, baseURLString: "", apiKey: "", model: "gpt-6-luna")
+    ) { error in
+      XCTAssertTrue(error.localizedDescription.contains("system"))
+    }
+  }
+
+  func testOtherKindsStillValidateTheURL() throws {
+    XCTAssertThrowsError(
+      try SettingsViewModel.validatedEndpointInput(
+        kind: .ollama, baseURLString: "not a url", apiKey: "", model: "llama3.2"))
+    let input = try SettingsViewModel.validatedEndpointInput(
+      kind: .openAICompatible, baseURLString: " https://api.openai.com/v1 ", apiKey: "sk",
+      model: "gpt-6-luna")
+    XCTAssertEqual(input.url?.absoluteString, "https://api.openai.com/v1")
+    XCTAssertEqual(input.apiKey, "sk")
+  }
+
+  // MARK: - Stale Keychain reference on edit
+
+  private func provider(_ id: String, _ kind: ProviderKind, key: String?) -> ProviderConfig {
+    ProviderConfig(id: id, kind: kind, defaultModel: "m", keychainKey: key)
+  }
+
+  func testSwitchingToAppleDropsAndDeletesTheKey() {
+    let result = SettingsViewModel.staleKeyHandling(
+      original: provider("openai", .openAICompatible, key: "overtype-openai-key"),
+      newKind: .apple, apiKey: "", otherProviders: [])
+    XCTAssertTrue(result.dropReference)
+    XCTAssertEqual(result.deleteItem, "overtype-openai-key")
+  }
+
+  func testSavingAppleWithoutKindChangeDropsTheReferenceOnly() {
+    let result = SettingsViewModel.staleKeyHandling(
+      original: provider("apple", .apple, key: "copied-key"), newKind: .apple, apiKey: "",
+      otherProviders: [])
+    XCTAssertTrue(result.dropReference)
+    XCTAssertNil(result.deleteItem)
+  }
+
+  func testASharedKeyIsNeverDeleted() {
+    let result = SettingsViewModel.staleKeyHandling(
+      original: provider("openai", .openAICompatible, key: "shared"), newKind: .apple,
+      apiKey: "", otherProviders: [provider("other", .openAICompatible, key: "shared")])
+    XCTAssertTrue(result.dropReference)
+    XCTAssertNil(result.deleteItem)
+  }
+
+  func testSameKindEditKeepsTheKey() {
+    let result = SettingsViewModel.staleKeyHandling(
+      original: provider("openai", .openAICompatible, key: "k"), newKind: .openAICompatible,
+      apiKey: "", otherProviders: [])
+    XCTAssertFalse(result.dropReference)
+    XCTAssertNil(result.deleteItem)
+  }
 }

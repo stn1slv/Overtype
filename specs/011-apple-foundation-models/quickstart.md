@@ -31,3 +31,4 @@ Re-grant the Accessibility permission after the rebuild, then add a provider in 
 | Q7 | Open the Actions editor for the action | No reasoning picker; temperature control present; Automatic caption matches |
 | Q8 | Edit an OpenAI provider that has a key and an invalid Base URL, switch Kind to Apple, save | Model field changes to `system`; Save succeeds; `config.json` record has no `baseURL` and no `keychainKey`; Keychain item removed |
 | Q9 | Check `config.json` for the provider | Matches the record in data-model.md |
+| Q10 | On a Mac with macOS 26 or older, launch the built app, run an action on an existing provider, then run an Apple action | App launches; the existing provider works; the Apple action shows "requires macOS 27" and the text is unchanged (SC-006) |

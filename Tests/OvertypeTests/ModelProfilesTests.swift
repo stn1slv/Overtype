@@ -167,6 +167,12 @@ final class ModelProfilesTests: XCTestCase {
     XCTAssertFalse(ModelProfiles.kindsWithoutTemperature.contains(.apple))
   }
 
+  func testAppleSuggestsALongerTimeout() {
+    XCTAssertEqual(ModelProfiles.suggestedTimeoutSeconds[.apple], 60)
+    XCTAssertNil(ModelProfiles.suggestedTimeoutSeconds[.openAICompatible])
+    XCTAssertEqual(ModelProfiles.defaultTimeoutSeconds, 30)
+  }
+
   func testOnlyAppleRunsWithoutEndpointOrKey() {
     XCTAssertEqual(ModelProfiles.kindsWithoutEndpointOrKey, [.apple])
   }

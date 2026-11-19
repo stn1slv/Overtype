@@ -207,25 +207,10 @@ public final class SettingsViewModel: ObservableObject {
         userInfo: [NSLocalizedDescriptionKey: "Default model cannot be empty."])
     }
 
-    // A kind without an endpoint or key (Apple on-device) stores neither and
-    // ignores a key typed into the form (specs/011 FR-012). Its URL is not
-    // validated either: the field is hidden, so an invalid leftover from
-    // another kind could not be fixed.
-    let storesEndpointAndKey = !ModelProfiles.kindsWithoutEndpointOrKey.contains(kind)
-    let apiKey = storesEndpointAndKey ? apiKey : ""
-    let trimmedBaseURL =
-      storesEndpointAndKey ? baseURLString.trimmingCharacters(in: .whitespacesAndNewlines) : ""
-    let url: URL?
-    if !trimmedBaseURL.isEmpty {
-      guard let parsedURL = URL(string: trimmedBaseURL), parsedURL.scheme != nil else {
-        throw NSError(
-          domain: "SettingsError", code: 3,
-          userInfo: [NSLocalizedDescriptionKey: "Invalid Base URL."])
-      }
-      url = parsedURL
-    } else {
-      url = nil
-    }
+    let input = try Self.validatedEndpointInput(
+      kind: kind, baseURLString: baseURLString, apiKey: apiKey, model: trimmedModel)
+    let url = input.url
+    let effectiveAPIKey = input.apiKey
 
     // Fallible Keychain work runs BEFORE any published state is mutated, so a
     // failed store never leaves the in-memory config pointing at a key that
@@ -238,7 +223,7 @@ public final class SettingsViewModel: ObservableObject {
         provider.kind = kind
         provider.baseURL =
           Self.storedEndpointAndKey(
-            kind: kind, url: url, keychainKey: nil
+            kind: kind, url: url, keychainKey: original.keychainKey
           ).url
         provider.defaultModel = trimmedModel
         provider.timeoutSeconds = timeout
@@ -257,17 +242,20 @@ public final class SettingsViewModel: ObservableObject {
         // That is the safe direction to fail in: the worst case is a credential
         // the user has to re-enter, versus one silently sent somewhere new.
         // A kind without a key (Apple on-device) never keeps one (FR-012).
-        if (original.kind != kind && apiKey.isEmpty) || !storesEndpointAndKey {
-          if let staleKey = provider.keychainKey {
-            try? KeychainStore.shared.delete(key: staleKey)
+        let stale = Self.staleKeyHandling(
+          original: original, newKind: kind, apiKey: effectiveAPIKey,
+          otherProviders: providers.filter { $0.id != existingId })
+        if stale.dropReference {
+          if let item = stale.deleteItem {
+            try? KeychainStore.shared.delete(key: item)
           }
           provider.keychainKey = nil
         }
 
         // Save API Key if provided
-        if !apiKey.isEmpty {
+        if !effectiveAPIKey.isEmpty {
           let keychainKey = provider.keychainKey ?? "overtype-\(existingId)-key"
-          try KeychainStore.shared.store(key: keychainKey, value: apiKey)
+          try KeychainStore.shared.store(key: keychainKey, value: effectiveAPIKey)
           provider.keychainKey = keychainKey
         }
         providers[index] = provider
@@ -287,8 +275,8 @@ public final class SettingsViewModel: ObservableObject {
       let keychainKey = "overtype-\(slug)-key"
 
       // Save API Key
-      if !apiKey.isEmpty {
-        try KeychainStore.shared.store(key: keychainKey, value: apiKey)
+      if !effectiveAPIKey.isEmpty {
+        try KeychainStore.shared.store(key: keychainKey, value: effectiveAPIKey)
       }
 
       let stored = Self.storedEndpointAndKey(kind: kind, url: url, keychainKey: keychainKey)
@@ -308,12 +296,63 @@ public final class SettingsViewModel: ObservableObject {
         // Roll back so neither the in-memory list nor the Keychain keeps a
         // provider that was never persisted.
         providers.removeLast()
-        if !apiKey.isEmpty {
+        if !effectiveAPIKey.isEmpty {
           try? KeychainStore.shared.delete(key: keychainKey)
         }
         throw error
       }
     }
+  }
+
+  /// Validates and normalizes the form's endpoint, key and model for `kind`.
+  /// Kinds in `ModelProfiles.kindsWithoutEndpointOrKey` (Apple on-device)
+  /// keep no URL and no key, and their URL is not validated: the field is
+  /// hidden, so an invalid leftover from another kind could not be fixed. The
+  /// Apple kind accepts only its one model (specs/011 FR-010, FR-012). Pure,
+  /// unit-tested.
+  static func validatedEndpointInput(
+    kind: ProviderKind, baseURLString: String, apiKey: String, model: String
+  ) throws -> (url: URL?, apiKey: String) {
+    if ModelProfiles.kindsWithoutEndpointOrKey.contains(kind) {
+      if kind == .apple, !AppleFoundationModelProvider.acceptsModel(model) {
+        throw NSError(
+          domain: "SettingsError", code: 4,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "The Apple on-device provider accepts only the model "
+              + "\"\(AppleFoundationModelProvider.systemModelID)\"."
+          ])
+      }
+      return (nil, "")
+    }
+    let trimmedBaseURL = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedBaseURL.isEmpty else { return (nil, apiKey) }
+    guard let parsedURL = URL(string: trimmedBaseURL), parsedURL.scheme != nil else {
+      throw NSError(
+        domain: "SettingsError", code: 3,
+        userInfo: [NSLocalizedDescriptionKey: "Invalid Base URL."])
+    }
+    return (parsedURL, apiKey)
+  }
+
+  /// What an edit does with the provider's stored Keychain reference.
+  /// The reference is dropped when the kind changes and no new key was typed
+  /// (a credential must not follow the record to another service), and always
+  /// for a kind without a key. The Keychain item itself is deleted only on a
+  /// kind change, and never while another provider still names the same item:
+  /// a hand-copied `keychainKey` must not cost a different provider its key.
+  /// Pure, unit-tested.
+  static func staleKeyHandling(
+    original: ProviderConfig, newKind: ProviderKind, apiKey: String,
+    otherProviders: [ProviderConfig]
+  ) -> (dropReference: Bool, deleteItem: String?) {
+    let kindChanged = original.kind != newKind
+    let dropReference =
+      (kindChanged && apiKey.isEmpty) || ModelProfiles.kindsWithoutEndpointOrKey.contains(newKind)
+    guard dropReference, kindChanged, let item = original.keychainKey,
+      !otherProviders.contains(where: { $0.keychainKey == item })
+    else { return (dropReference, nil) }
+    return (true, item)
   }
 
   /// What a saved provider record keeps of the endpoint and the Keychain

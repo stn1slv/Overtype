@@ -103,8 +103,9 @@ public enum ProviderError: Error, LocalizedError {
   case contextWindowExceeded(tokenLimit: Int)
   /// The model reported that it does not support the text's language.
   case unsupportedLanguage(code: String)
-  /// The system limited how often Overtype may call the model.
-  case rateLimited
+  /// The system limited how often Overtype may call the model. `resetDate`
+  /// is when the limit ends, if the system said so.
+  case rateLimited(resetDate: Date?)
   /// Any other failure of the on-device model, with Apple's own description.
   case onDeviceModelFailed(message: String)
 
@@ -264,9 +265,12 @@ public enum ProviderError: Error, LocalizedError {
       // host and is left untouched, while the Ollama provider maps the same
       // condition onto `.serviceUnreachable` before it gets there.
       return false
-    case .rateLimited:
-      // A system rate limit can clear within the retry pause.
-      return true
+    case .rateLimited(let resetDate):
+      // Retry only when the limit can clear within the retry pause: the
+      // Settings slider allows at most `maxUsefulRateLimitWait` seconds. A
+      // later reset would make the second request fail the same way.
+      guard let resetDate else { return true }
+      return resetDate.timeIntervalSinceNow <= Self.maxUsefulRateLimitWait
     case .onDeviceModelUnavailable, .contextWindowExceeded, .unsupportedLanguage,
       .onDeviceModelFailed:
       // Device state, text length and language do not change between two
@@ -274,6 +278,10 @@ public enum ProviderError: Error, LocalizedError {
       return false
     }
   }
+
+  /// The longest wait for a rate limit to clear that still makes the single
+  /// retry worthwhile; matches the Providers tab's retry-delay maximum.
+  static let maxUsefulRateLimitWait: TimeInterval = 5
 
   /// A redaction-safe label for logs. `errorDescription` may embed a server
   /// message, which can echo fragments of the submitted text, so it must not
