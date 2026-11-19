@@ -51,7 +51,7 @@ A user adds the Apple provider without code: either by choosing it in the Settin
 1. **Given** the Providers tab is open, **When** the user adds a provider, **Then** the Apple kind is offered (labelled as requiring macOS 27 when the Mac runs an older version), and choosing it hides or disables the credential and address fields and shows that the provider runs on this Mac with no network.
 2. **Given** the user saves an Apple provider, **When** the configuration is written, **Then** it contains no credential reference and no endpoint address, and no Keychain entry is created.
 3. **Given** the configuration file declares a provider with the Apple kind, **When** the configuration loads, **Then** the provider is registered and actions can select it.
-4. **Given** an existing provider of another kind with a stored key is edited and switched to the Apple kind, **When** it is saved, **Then** its stored key is removed and no address is kept.
+4. **Given** an existing provider of another kind with a stored key, a model other than `system`, and any Base URL (even an invalid one) is edited and switched to the Apple kind, **When** the kind changes, **Then** the model field becomes `system`; **and when** it is saved, **Then** the save succeeds, its stored key is removed and no address is kept.
 5. **Given** a hand-edited Apple provider record that carries an address or a credential reference, **When** it is loaded and used, **Then** both are ignored and no network request is made.
 
 ---
@@ -121,7 +121,7 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 - **FR-009**: Each run MUST start a fresh model session that carries the action's system prompt as instructions and the rendered user prompt as the request, with no history from earlier runs.
 - **FR-010**: Model selection MUST follow the existing order (action model, then provider default model). The Apple kind MUST accept a documented identifier for the default on-device model, pre-filled in Settings and used when the field is empty.
 - **FR-011**: The Apple kind MUST have a model profile under the model-aware parameter rules: it states whether a creativity value is accepted and its range, which reasoning values (if any) are accepted, and the fastest value Automatic chooses. The editor caption and the request MUST come from the same resolver, as for the existing kinds. Profile values MUST be taken from a recorded diagnostic run against the real model, not from documentation alone.
-- **FR-012**: The Settings Providers tab MUST, for the Apple kind, not ask for a credential or an address, show that the provider runs on this Mac without network, remove any stored credential when a provider is switched to the Apple kind, and save successfully with both fields empty.
+- **FR-012**: The Settings Providers tab MUST, for the Apple kind, not ask for a credential or an address, show that the provider runs on this Mac without network, remove any stored credential when a provider is switched to the Apple kind, save successfully with both fields empty, and not validate a Base URL left over from another kind (the field is hidden, so it could not be fixed). When an existing provider is switched to the Apple kind and its model is neither empty nor `system`, the form MUST set the model to `system`; this is a narrow exception to feature 010's rule that editing never changes a provider's model, because the Apple kind has exactly one model (user decision 2026-11-19).
 - **FR-013**: Every Apple run MUST use Apple's "permissive content transformations" safety mode, which Apple intends for transforming text the user supplies, so that ordinary text is not refused merely because of its subject. The mode is fixed; there is no setting for it.
 - **FR-014**: Errors from the Apple provider MUST NOT log the selected text or the model output at `info` level or above, following the existing logging rules.
 - **FR-015**: The project documentation MUST state that the Apple provider keeps the text on the Mac (`docs/privacy.md`), describe how to set it up including the Apple Intelligence requirement (`README.md`), and record the manual acceptance results (`docs/compatibility.md`).
@@ -153,3 +153,10 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 - The Settings Providers tab needs a small change for the Apple kind (as it did for Ollama in feature 008). This is user-interface work, not part of the three-edit backend rule, and the plan's Constitution Check records it.
 - Overtype runs one action at a time, so concurrent requests to the model are not a concern.
 - The test machine runs macOS 27.2 with the system model ("AFM 3 Core Advanced") available, which covers the success path and the over-long, refusal and language cases; old-macOS and ineligible-device paths are verified by unit tests of the error mapping only.
+
+## Revisions
+
+### Revision: Implementation Sync 2026-11-19 [Sync: apple-settings-and-ci-pin]
+- Reason: Implementation pass 2 shipped two Settings decisions for the Apple kind: the model becomes `system` when an existing provider switches to Apple, and the hidden Base URL is not validated on save.
+- Items: User Story 2 scenario 4 ("Given an existing provider of another kind with a stored key"), FR-012
+- Approved: approve all

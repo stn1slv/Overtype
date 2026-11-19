@@ -42,7 +42,7 @@ Add a fifth provider kind, `apple`, that runs Overtype actions on Apple's on-dev
 | VI. No Silent Failure | Every unavailability reason and framework error has a specific typed message (data-model.md). Cancellable through structured concurrency (measured 0.32 s). Hard timeout through a task-group race. |
 | VII. Native Stack | System framework only, no new package. No force unwrap. Swift 5.9 mode kept. The app stays macOS 13+; the framework is weak-linked (verified by spike, re-verified on the built app). |
 | VIII. Verification | Pure mapping, messages, retryability, profile and settings logic are unit-tested. The model call is system-boundary code, covered by quickstart Q1 to Q9 in `docs/compatibility.md`. |
-| Platform constraints | Build now requires Xcode 27; CI and release use the `xcode-27` preview runner (user decision, research R2). |
+| Platform constraints | Build now requires Xcode 27; CI and release use the `xcode-27` preview runner (user decision, research R2), pinned to `/Applications/Xcode_27.2.app`, the toolchain the provider was verified with, because `/Applications/Xcode.app` on that image is Xcode 27.1. |
 
 Passes with the three dated exceptions E1 to E3 below.
 
@@ -94,7 +94,7 @@ README.md, docs/privacy.md, docs/compatibility.md, CLAUDE.md
 - **Generation**: `LanguageModelSession(model: SystemLanguageModel(useCase: .general, guardrails: .permissiveContentTransformations), instructions: request.systemPrompt)`, then `respond(to: prompt, options: GenerationOptions(temperature: request.temperature))`. Blank content throws `.emptyResponse`.
 - **Timeout**: throwing task group of the generation and `Task.sleep(timeoutSeconds)`; first to finish wins, `cancelAll()` on the rest.
 - **Retry**: `.rateLimited` and `.timeout` get the existing single retry; everything new is permanent (data-model.md).
-- **Settings rule**: one `Set<ProviderKind>` (`ModelProfiles.kindsWithoutEndpointOrKey = [.apple]`) drives both the form (hide fields) and `saveProvider` (store nil, delete stale key), so the two cannot disagree.
+- **Settings rule**: one `Set<ProviderKind>` (`ModelProfiles.kindsWithoutEndpointOrKey = [.apple]`) drives both the form (hide fields) and `saveProvider` (store nil, delete stale key, skip the Base URL check for the hidden field), so the two cannot disagree. `ProvidersTab.changeKind` sets the model to `system` when an existing provider switches to Apple with any other model (narrow exception to feature 010's FR-019, user decision 2026-11-19).
 - **ActionEngine**: no change. Parameter resolution, retry and error display already handle the new kind and cases generically.
 
 ## Complexity Tracking
@@ -106,3 +106,10 @@ Explicit, dated exceptions to Principle IV ("No other file may need to change"),
 | E1 | Five new `ProviderError` cases in `Providers/AIProvider.swift` | Principle VI requires typed errors that tell the user what failed and what to do; on-device unavailability, token context limit, unsupported language, rate limit and generic model failure have no existing case with a correct message | Reusing existing cases moves the cause into a string (forbidden by Principle VI) or shows a wrong message (`inputTooLargeForContext` counts bytes, `apiError(429)` says "API Error") |
 | E2 | Apple branch in `UI/Settings/ProvidersTab.swift` and `UI/Settings/SettingsViewModel.swift` | FR-012: the form must not ask for an address or key, and saving must store neither and delete a stale key | Without it, the form offers fields the provider ignores and the create path always writes a `keychainKey` reference, contradicting User Story 2 scenario 2 |
 | E3 | Profile row and per-kind data in `Providers/ModelProfiles.swift` | FR-011 and the 010 rule: every kind's parameters come from the shared resolver and its profile table | Without a profile the editor shows no evidence-based Automatic caption, and the suggested model `system` would not be pre-filled |
+
+## Revisions
+
+### Revision: Implementation Sync 2026-11-19 [Sync: apple-settings-and-ci-pin]
+- Reason: Implementation pass 2 recorded the Apple Settings decisions (model set to `system` on switch, hidden Base URL not validated) and pinned CI and release to Xcode 27.2.
+- Items: Design Notes "Settings rule", Constitution Check "Platform constraints"
+- Approved: approve all
