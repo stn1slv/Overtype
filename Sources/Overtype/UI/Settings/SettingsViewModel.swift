@@ -207,7 +207,14 @@ public final class SettingsViewModel: ObservableObject {
         userInfo: [NSLocalizedDescriptionKey: "Default model cannot be empty."])
     }
 
-    let trimmedBaseURL = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+    // A kind without an endpoint or key (Apple on-device) stores neither and
+    // ignores a key typed into the form (specs/011 FR-012). Its URL is not
+    // validated either: the field is hidden, so an invalid leftover from
+    // another kind could not be fixed.
+    let storesEndpointAndKey = !ModelProfiles.kindsWithoutEndpointOrKey.contains(kind)
+    let apiKey = storesEndpointAndKey ? apiKey : ""
+    let trimmedBaseURL =
+      storesEndpointAndKey ? baseURLString.trimmingCharacters(in: .whitespacesAndNewlines) : ""
     let url: URL?
     if !trimmedBaseURL.isEmpty {
       guard let parsedURL = URL(string: trimmedBaseURL), parsedURL.scheme != nil else {
@@ -219,10 +226,6 @@ public final class SettingsViewModel: ObservableObject {
     } else {
       url = nil
     }
-    // A kind without an endpoint or key (Apple on-device) stores neither and
-    // ignores a key typed into the form (specs/011 FR-012).
-    let storesEndpointAndKey = !ModelProfiles.kindsWithoutEndpointOrKey.contains(kind)
-    let apiKey = storesEndpointAndKey ? apiKey : ""
 
     // Fallible Keychain work runs BEFORE any published state is mutated, so a
     // failed store never leaves the in-memory config pointing at a key that

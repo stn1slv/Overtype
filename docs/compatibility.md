@@ -384,6 +384,19 @@ macOS 27.2.1, Xcode 27.2, model "AFM 3 Core Advanced", `SystemLanguageModel(useC
 
 Consequences in the code: no reasoning values for the `apple` kind; temperature always passed; no `maximumResponseTokens` (a cap truncates silently); the provider timeout bounds a runaway answer; `contextSizeExceeded` maps to a message that names the answer as well as the selection. A spike binary with deployment target macOS 13 got `LC_LOAD_WEAK_DYLIB` for FoundationModels.framework.
 
+#### Provider smoke test (executed 2026-11-19)
+
+`AppleFoundationModelProvider.transform` itself, called from a temporary XCTest against the real model (the test was deleted afterwards):
+
+| Case | Result |
+|---|---|
+| "he go to school yesterday", timeout 30 s | "He went to school yesterday." in 0.73 s |
+| 40,000 characters of README text | `contextWindowExceeded(tokenLimit: 8192)` in 0.06 s |
+| Long essay prompt, timeout 1 s | `timeout` after 1.03 s (generation cancelled) |
+| Long essay prompt, task cancelled after 0.5 s | `cancelled` after 0.53 s |
+
+The released `Overtype.app` (build from this branch) has `minos 13.0` and loads FoundationModels.framework with `LC_LOAD_WEAK_DYLIB`.
+
 #### End-to-end acceptance
 
 Pending: quickstart Q1 to Q9 (`specs/011-apple-foundation-models/quickstart.md`) against the built app. Q4 checks whether macOS rate-limits a menu bar app that is not frontmost; the command-line run above cannot answer that.
@@ -397,5 +410,5 @@ Pending: quickstart Q1 to Q9 (`specs/011-apple-foundation-models/quickstart.md`)
 | Q5 | About 45,000 characters | "too long for the on-device model", text unchanged | pending |
 | Q6 | Apple Intelligence turned off | "Turn on Apple Intelligence" error, text unchanged | pending |
 | Q7 | Actions editor | No reasoning picker, temperature control present | pending |
-| Q8 | OpenAI provider with a key switched to Apple | No `baseURL` and no `keychainKey` in config; Keychain item removed | pending |
+| Q8 | OpenAI provider with a key and an invalid Base URL switched to Apple | Model becomes `system`; Save succeeds; no `baseURL` and no `keychainKey` in config; Keychain item removed | pending |
 | Q9 | Settings-created Apple provider record | Matches `data-model.md` | pending |

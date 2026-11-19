@@ -29,5 +29,5 @@ Re-grant the Accessibility permission after the rebuild, then add a provider in 
 | Q5 | Select about 45,000 characters, raise the action's Max Characters to allow it, run | "too long for the on-device model" error at once, text unchanged |
 | Q6 | Turn off Apple Intelligence in System Settings, run Q1 | "Turn on Apple Intelligence" error, text unchanged; turn it back on |
 | Q7 | Open the Actions editor for the action | No reasoning picker; temperature control present; Automatic caption matches |
-| Q8 | Edit an OpenAI provider that has a key, switch Kind to Apple, save | `config.json` record has no `baseURL` and no `keychainKey`; Keychain item removed |
+| Q8 | Edit an OpenAI provider that has a key and an invalid Base URL, switch Kind to Apple, save | Model field changes to `system`; Save succeeds; `config.json` record has no `baseURL` and no `keychainKey`; Keychain item removed |
 | Q9 | Check `config.json` for the provider | Matches the record in data-model.md |

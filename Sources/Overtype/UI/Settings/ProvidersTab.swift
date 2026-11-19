@@ -253,6 +253,11 @@ public struct ProvidersTab: View {
       if defaultModel.isEmpty || defaultModel == previousSuggestion {
         defaultModel = ModelProfiles.suggestedDefaultModel[newKind] ?? ""
       }
+    } else if newKind == .apple, !AppleFoundationModelProvider.acceptsModel(defaultModel) {
+      // Narrow exception to FR-019 (specs/011, user decision 2026-11-19): the
+      // Apple kind has exactly one model, so a model kept from another kind
+      // would make every run fail with "model not available".
+      defaultModel = AppleFoundationModelProvider.systemModelID
     }
     kind = newKind
   }
