@@ -252,7 +252,7 @@ Overtype can use the language model built into macOS through Apple's FoundationM
 
 1. Check the requirements: macOS 27 or later, a Mac that supports Apple Intelligence, Apple Intelligence turned on in System Settings, and the model fully downloaded. On older macOS versions the provider is still listed, but a run shows "requires macOS 27".
 
-2. In **Settings → Providers**, add a provider and choose **Apple on-device** as the Kind. The form has no Base URL and no API Key fields. Or add this block to the `"providers"` array in `config.json`:
+2. In **Settings → Providers**, add a provider and choose **Apple on-device** as the Kind. The form has no Base URL and no API Key fields, and it fills in the model `system` and a 60-second timeout. Or add this block to the `"providers"` array in `config.json`:
 
    ```json
    {
