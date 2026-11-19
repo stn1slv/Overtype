@@ -8,6 +8,14 @@
 
 **Input**: User description: "Add an Apple Foundation Models provider. New provider kind (e.g. "apple") that calls Apple's on-device model through the native FoundationModels framework (LanguageModelSession), not the fm CLI and not a subprocess. The package targets macOS 13, so the provider must be gated with #available (FoundationModels is in the macOS 27.2 SDK on this machine) and return a typed, human-readable error when the OS or model is unavailable (check SystemLanguageModel availability: device not eligible, Apple Intelligence not enabled, model not ready). No API key, no baseURL, no network. Map guardrail violations and context-window overflow to typed ProviderError cases. Cancellation (Escape) must stop generation. Follow the three-edit provider rule (ProviderKind case, AIProvider type, ProviderRegistry line) and the model-aware parameters rules (ModelProfiles/GenerationParameterResolver: decide what temperature/reasoning means here). Settings Providers tab must handle a provider with no key and no URL. Context: /usr/bin/fm exists; `fm models` reports system model "AFM 3 Core Advanced" available, pcc unavailable without iCloud; fm's license forbids programmatic access to Apple models except as expressly permitted, which is why the public framework was chosen over the CLI."
 
+## Clarifications
+
+### Session 2026-11-19
+
+- Q: Which macOS versions should the Apple provider support? → A: macOS 27 and later only. macOS 27 replaced the model's error types and deprecated the macOS 26 ones, so supporting 27 only means one error family, less code, and every path testable on the development machine. Supporting macOS 26 as well was rejected because it doubles the error mapping for a version whose path could only be checked by unit tests here. Users on macOS 26 and earlier see the typed "requires macOS 27" error.
+- Q: Which safety-filter mode should the Apple provider use? → A: Apple's "permissive content transformations" mode, fixed for every Apple run, with no setting. Overtype only transforms text the user selected, which is the case Apple designed this mode for, and it refuses less ordinary text about sensitive subjects. The default mode was rejected because it produces more false refusals; a per-provider setting was rejected as configuration almost no user would change.
+- Q: On macOS 13 to 26, how should the Settings Providers tab treat the Apple kind? → A: Show it, labelled as requiring macOS 27. The user can still save it (for example in a configuration shared with a newer Mac), and a run produces the typed "requires macOS 27" error. Hiding it was rejected because the picker would then disagree with a configuration that already contains an Apple provider.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run an action against Apple's on-device model (Priority: P1)
@@ -37,7 +45,7 @@ A user adds the Apple provider without code: either by choosing it in the Settin
 
 **Acceptance Scenarios**:
 
-1. **Given** the Providers tab is open, **When** the user adds a provider, **Then** the Apple kind is offered, and choosing it hides or disables the credential and address fields and shows that the provider runs on this Mac with no network.
+1. **Given** the Providers tab is open, **When** the user adds a provider, **Then** the Apple kind is offered (labelled as requiring macOS 27 when the Mac runs an older version), and choosing it hides or disables the credential and address fields and shows that the provider runs on this Mac with no network.
 2. **Given** the user saves an Apple provider, **When** the configuration is written, **Then** it contains no credential reference and no endpoint address, and no Keychain entry is created.
 3. **Given** the configuration file declares a provider with the Apple kind, **When** the configuration loads, **Then** the provider is registered and actions can select it.
 4. **Given** an existing provider of another kind with a stored key is edited and switched to the Apple kind, **When** it is saved, **Then** its stored key is removed and no address is kept.
@@ -55,7 +63,7 @@ When the on-device model cannot serve a request, the user sees a specific, human
 
 **Acceptance Scenarios**:
 
-1. **Given** macOS is older than the first version that ships the on-device model API, **When** the user runs an Apple action, **Then** an error states that the Apple provider requires a newer macOS version, naming the minimum, and the selection is unchanged.
+1. **Given** macOS is older than macOS 27, **When** the user runs an Apple action, **Then** an error states that the Apple provider requires macOS 27 or later, and the selection is unchanged.
 2. **Given** Apple Intelligence is turned off, **When** the user runs an Apple action, **Then** an error says Apple Intelligence must be turned on in System Settings, and the selection is unchanged.
 3. **Given** the Mac is not eligible for Apple Intelligence, **When** the user runs an Apple action, **Then** an error says this Mac does not support the on-device model.
 4. **Given** the model is still downloading or otherwise not ready, **When** the user runs an Apple action, **Then** an error says the model is not ready yet and to try again later.
@@ -85,7 +93,7 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 ### Edge Cases
 
 - **Overtype is a background accessory app.** The target application, not Overtype, is frontmost during every run. If the operating system restricts or rate-limits model use by apps that are not in the foreground, the feature fails in normal use. This MUST be verified by a recorded diagnostic run on a real machine before the plan is final (Principle III), and the result recorded in `docs/compatibility.md`.
-- A configuration with the Apple kind is loaded on macOS 13 to 25. It MUST load without error and the provider MUST be listed; only running it produces the "requires a newer macOS" error. The configuration MUST NOT be rewritten or the provider dropped.
+- A configuration with the Apple kind is loaded on macOS 13 to 26. It MUST load without error and the provider MUST be listed; only running it produces the "requires a newer macOS" error. The configuration MUST NOT be rewritten or the provider dropped.
 - The configured model name is empty or unknown. The run uses the default system model when the name is empty; an unknown name produces a specific error naming the model instead of silently falling back.
 - The model is available when Settings is open but becomes unavailable before the run (for example, Apple Intelligence is turned off). Availability is checked at the start of each run, not cached.
 - The user presses Escape during a long generation. Generation stops promptly and no partial result is written.
@@ -102,7 +110,7 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 - **FR-001**: The system MUST offer a new provider kind for Apple's on-device foundation model, selectable in configuration and in the Settings Providers tab.
 - **FR-002**: The Apple provider MUST call the model through Apple's public, documented application interface for the on-device model. It MUST NOT launch the `fm` command-line tool or any other subprocess, and MUST NOT talk to a local server.
 - **FR-003**: The Apple provider MUST make no network request of its own. Its configuration MUST NOT require or use an endpoint address or a credential.
-- **FR-004**: The application MUST keep its current minimum macOS version. On macOS versions without the on-device model interface, the Apple kind MUST still load from configuration and appear in Settings, and running it MUST produce a specific typed error naming the minimum macOS version.
+- **FR-004**: The application MUST keep its current minimum macOS version (13). The Apple provider runs on macOS 27 and later only. On macOS 13 to 26, the Apple kind MUST still load from configuration and appear in the Settings picker labelled as requiring macOS 27, and running it MUST produce a specific typed error saying macOS 27 or later is required.
 - **FR-005**: Before each request the provider MUST check the model's availability and map each unavailability reason (device not eligible, Apple Intelligence not enabled, model not ready, and any reason the system adds later) to a specific typed error with a message that tells the user what to do.
 - **FR-006**: The provider MUST map these model failures to specific typed errors: input too long for the model, safety rules triggered, model refusal, unsupported language, rate limited, generation timeout, and model assets unavailable. Any other model failure MUST map to a typed error that still identifies the Apple provider as the source.
 - **FR-007**: The automatic-retry classification MUST treat device-state errors (old macOS, ineligible device, Apple Intelligence off, model not ready), input too long, safety and refusal, and unsupported language as permanent, so they never consume the retry. Rate limiting MUST be treated as transient and get the single existing retry.
@@ -111,7 +119,7 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 - **FR-010**: Model selection MUST follow the existing order (action model, then provider default model). The Apple kind MUST accept a documented identifier for the default on-device model, pre-filled in Settings and used when the field is empty.
 - **FR-011**: The Apple kind MUST have a model profile under the model-aware parameter rules: it states whether a creativity value is accepted and its range, which reasoning values (if any) are accepted, and the fastest value Automatic chooses. The editor caption and the request MUST come from the same resolver, as for the existing kinds. Profile values MUST be taken from a recorded diagnostic run against the real model, not from documentation alone.
 - **FR-012**: The Settings Providers tab MUST, for the Apple kind, not ask for a credential or an address, show that the provider runs on this Mac without network, remove any stored credential when a provider is switched to the Apple kind, and save successfully with both fields empty.
-- **FR-013**: The Apple provider MUST treat the user's selection as content to transform rather than as a request to the model, using the model's mode intended for transforming user-supplied text when the system offers one, so that ordinary text is not refused merely because of its subject.
+- **FR-013**: Every Apple run MUST use Apple's "permissive content transformations" safety mode, which Apple intends for transforming text the user supplies, so that ordinary text is not refused merely because of its subject. The mode is fixed; there is no setting for it.
 - **FR-014**: Errors from the Apple provider MUST NOT log the selected text or the model output at `info` level or above, following the existing logging rules.
 - **FR-015**: The project documentation MUST state that the Apple provider keeps the text on the Mac (`docs/privacy.md`), describe how to set it up including the Apple Intelligence requirement (`README.md`), and record the manual acceptance results (`docs/compatibility.md`).
 - **FR-016**: The application MUST still build with the project's supported toolchain and pass its tests in continuous integration.
@@ -131,14 +139,14 @@ A user editing an action that uses the Apple provider sees the same "Automatic" 
 - **SC-003**: With all network interfaces off, 100% of Apple runs in the manual acceptance procedure succeed.
 - **SC-004**: Every unavailability reason and every mapped model failure produces a distinct, specific message; 0 of them leave the selection modified.
 - **SC-005**: Pressing Escape during generation leaves the selection unchanged in 100% of attempts and the HUD shows the cancelled state within 1 second.
-- **SC-006**: On macOS versions without the model interface, a configuration with an Apple provider loads with 0 warnings and every other provider keeps working.
+- **SC-006**: On macOS versions older than 27, a configuration with an Apple provider loads with 0 warnings and every other provider keeps working.
 
 ## Assumptions
 
 - Scope is the on-device model only. Apple's Private Cloud Compute model, which sends text to Apple servers and needs an iCloud account, is out of scope for this feature and can be added later as a separate decision under the privacy principle.
 - The `fm` command-line tool and its `fm serve` server are not used. The user chose the public framework because the tool's terms forbid programmatic access to Apple models except as expressly permitted.
-- The on-device model interface first shipped in macOS 26; macOS 27 added richer error types. The plan decides how to support both, and whether macOS 26 is supported or the minimum for this provider is 27, based on what the CI toolchain can build.
-- The on-device model has a small context window (4,096 tokens on macOS 26; the plan confirms the macOS 27 value). The default action limit of 5,000 characters is assumed to fit together with a typical prompt and answer; a longer selection produces the "too long" error rather than truncated output.
+- The Apple provider requires macOS 27 (see Clarifications). The plan confirms that the CI toolchain has an SDK that can build it, and how the code compiles on a toolchain without that SDK.
+- The on-device model has a small context window (4,096 tokens on macOS 26; the plan confirms the macOS 27 value at run time). The default action limit of 5,000 characters is assumed to fit together with a typical prompt and answer; a longer selection produces the "too long" error rather than truncated output.
 - The Settings Providers tab needs a small change for the Apple kind (as it did for Ollama in feature 008). This is user-interface work, not part of the three-edit backend rule, and the plan's Constitution Check records it.
 - Overtype runs one action at a time, so concurrent requests to the model are not a concern.
 - The test machine runs macOS 27.2 with the system model ("AFM 3 Core Advanced") available, which covers the success path and the over-long, refusal and language cases; old-macOS and ineligible-device paths are verified by unit tests of the error mapping only.
